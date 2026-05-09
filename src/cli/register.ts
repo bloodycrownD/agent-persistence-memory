@@ -9,6 +9,7 @@ import { registerConfig } from "./commands/config";
 export function buildProgram(): Command {
   const program = new Command();
   program.name("apm").description("APM local memory CLI").version("1.0.0");
+  program.addHelpText("afterAll", "\nTimestamps use system local timezone (format: YYYY-MM-DD HH:mm:ss).");
 
   registerRead(program);
   registerRole(program);

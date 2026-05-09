@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -165,6 +165,29 @@ describe("apm cli spec paths", () => {
     expect(await runCliFail(["role", "edit", "--start", "1", "--end", "Infinity", "--text", "x"], dir)).toContain(
       "Invalid --end"
     );
+  });
+
+  it("rejects raw section files without mandatory front matter", async () => {
+    const dir = newTempDir();
+    await runCli(["role", "show"], dir);
+    writeFileSync(join(dir, ".apm", "role.md"), "raw text without front matter", "utf8");
+    const message = await runCliFail(["role", "show"], dir);
+    expect(message).toContain("Invalid section front matter");
+    expect(message).toContain("role.md");
+  });
+
+  it("validates section front matter schema for required local timestamp format", async () => {
+    const dir = newTempDir();
+    await runCli(["role", "show"], dir);
+    writeFileSync(
+      join(dir, ".apm", "role.md"),
+      ['---', 'createdAt: "bad-time"', 'updatedAt: "2026-01-01 10:00:00"', "---", "hello"].join("\n"),
+      "utf8"
+    );
+    const message = await runCliFail(["role", "show"], dir);
+    expect(message).toContain("Invalid section front matter");
+    expect(message).toContain("createdAt");
+    expect(message).toContain("YYYY-MM-DD HH:mm:ss");
   });
 });
 

@@ -34,15 +34,27 @@ function enforceLimits(cwd: string, section: Section, text: string): void {
 }
 
 type SectionMeta = { createdAt: string; updatedAt: string };
+const LOCAL_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+const SectionMetaSchema = z
+  .object({
+    createdAt: z.string().regex(LOCAL_TIMESTAMP_RE, "must match YYYY-MM-DD HH:mm:ss (system local timezone)"),
+    updatedAt: z.string().regex(LOCAL_TIMESTAMP_RE, "must match YYYY-MM-DD HH:mm:ss (system local timezone)")
+  })
+  .strict();
 
 function readSectionFile(path: string): { meta: SectionMeta | null; content: string } {
   const raw = readFileSync(path, "utf8");
-  if (!raw.startsWith("---\n")) {
-    return { meta: null, content: raw };
-  }
-  const parsed = parseFrontMatter(raw);
+  let parsed: { meta: unknown; content: string };
   try {
-    const meta = z.object({ createdAt: z.string(), updatedAt: z.string() }).passthrough().parse(parsed.meta);
+    parsed = parseFrontMatter(raw);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    throw new Error(
+      `Invalid section front matter: ${path}\n${message}\nExpected shape hint:\n---\ncreatedAt: "YYYY-MM-DD HH:mm:ss"\nupdatedAt: "YYYY-MM-DD HH:mm:ss"\n---\n<content>`
+    );
+  }
+  try {
+    const meta = SectionMetaSchema.parse(parsed.meta);
     return { meta: { createdAt: meta.createdAt, updatedAt: meta.updatedAt }, content: parsed.content };
   } catch (e) {
     if (e instanceof z.ZodError) {
