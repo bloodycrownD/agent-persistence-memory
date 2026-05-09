@@ -146,7 +146,54 @@ describe("apm cli spec paths", () => {
     expect(parsed.role).toBe("my role");
     expect(parsed.currentTask).toContain("todoA");
     expect(Array.isArray(parsed.chunks)).toBe(true);
+    expect(Array.isArray(parsed.persistenceLinks?.keywords)).toBe(true);
     expect(Array.isArray(parsed.persistenceLinks?.chunks)).toBe(true);
+    expect(Array.isArray(parsed.associative?.keywords)).toBe(true);
+  });
+
+  it("derives read keywords from persist/detail and selects up to 5 chunks", async () => {
+    const dir = newTempDir();
+    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "1000"], dir);
+    await runCli(["config", "set", "--section", "persist", "--min", "1", "--max", "1000"], dir);
+    await runCli(["config", "set", "--section", "tmpDetail", "--min", "1", "--max", "1000"], dir);
+
+    await runCli(
+      [
+        "persist",
+        "write",
+        "--text",
+        "vitest vitest vitest snapshot assertions inverted index extraction scoring persistence links associative keywords chunks selection atomic locks windows"
+      ],
+      dir
+    );
+    await runCli(
+      ["tmp", "detail", "write", "--text", "fix apm read json output include selected chunks and associative keywords via inverted index"],
+      dir
+    );
+
+    await runCli(["chunks", "add", "--name", "rel1", "--keywords", "vitest,keywords,selection,snapshot,assertions", "--text", "x"], dir);
+    await runCli(["chunks", "add", "--name", "rel2", "--keywords", "atomic,locks,windows,fs,rename", "--text", "y"], dir);
+    await runCli(["chunks", "add", "--name", "noise", "--keywords", "unrelated,banana,orange", "--text", "z"], dir);
+
+    const result = await runCli(["read", "--json"], dir);
+    const parsed = JSON.parse(result.out);
+
+    // Persistence keywords: 5~10 preferred, derived from persist/detail/todos (not chunk echoing).
+    expect(parsed.persistenceLinks.keywords.length).toBeGreaterThanOrEqual(5);
+    expect(parsed.persistenceLinks.keywords.length).toBeLessThanOrEqual(10);
+    expect(parsed.persistenceLinks.keywords).toContain("vitest");
+
+    // Selected chunks: max 5, ranked by overlap with extracted keywords.
+    expect(parsed.persistenceLinks.chunks.length).toBeLessThanOrEqual(5);
+    const selectedNames = parsed.persistenceLinks.chunks.map((c: { name: string }) => c.name);
+    expect(selectedNames).toContain("rel1");
+    expect(selectedNames).toContain("rel2");
+    expect(selectedNames).not.toContain("noise");
+
+    // Associative keywords: suggested from selected chunks; 5~10 when possible, else 3~5.
+    expect(parsed.associative.keywords.length).toBeGreaterThanOrEqual(3);
+    expect(parsed.associative.keywords.length).toBeLessThanOrEqual(10);
+    expect(parsed.associative.keywords).toContain("snapshot");
   });
 
   it("validates edit --start/--end numeric inputs with clear errors", async () => {
