@@ -29,6 +29,7 @@
 - 实现 `.apm` 目录存储结构及文件格式：
   - `.apm/config.json`
   - `.apm/status.json`
+  - `.apm/role.md`
   - `.apm/chunks/*.md`
   - `.apm/persistence/memory.md`
   - `.apm/tmp/todos/*.md`
