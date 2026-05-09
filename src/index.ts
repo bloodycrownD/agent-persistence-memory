@@ -15,6 +15,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { load as yamlLoad, dump as yamlDump } from "js-yaml";
 
 type Limits = { min: number; max: number };
 type Section = "role" | "persist" | "tmpDetail";
@@ -112,48 +113,36 @@ function table(headers: string[], rows: string[][]): string {
 }
 
 function parseFrontMatter(raw: string): { meta: unknown; content: string } {
-  if (!raw.startsWith("---\n")) {
+  const normalized = raw.replace(/\r\n/g, "\n");
+  if (!normalized.startsWith("---\n")) {
     throw new Error("Invalid markdown front matter: missing opening --- line.");
   }
-  const end = raw.indexOf("\n---\n", 4);
+  const end = normalized.indexOf("\n---\n", 4);
   if (end < 0) {
     throw new Error("Invalid markdown front matter: missing closing --- line.");
   }
-  const metaRaw = raw.slice(4, end).trim();
-  const content = raw.slice(end + 5);
-  const jsonLike = metaRaw
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      const i = line.indexOf(":");
-      if (i < 0) {
-        throw new Error(`Invalid front matter line: ${line}`);
-      }
-      const key = line.slice(0, i).trim();
-      const value = line.slice(i + 1).trim();
-      return [key, value] as const;
-    });
-  const metaObj: Record<string, unknown> = {};
-  for (const [k, v] of jsonLike) {
-    if (v === "true") metaObj[k] = true;
-    else if (v === "false") metaObj[k] = false;
-    else if (/^\d+$/.test(v)) metaObj[k] = Number(v);
-    else if (v.startsWith("[") && v.endsWith("]")) {
-      metaObj[k] = v
-        .slice(1, -1)
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-    } else metaObj[k] = v;
+  const metaRaw = normalized.slice(4, end).trim();
+  const content = normalized.slice(end + 5);
+  let meta: unknown;
+  try {
+    meta = yamlLoad(metaRaw) ?? {};
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`Invalid markdown front matter YAML: ${msg}`);
   }
-  return { meta: metaObj, content };
+  if (meta === null || typeof meta !== "object" || Array.isArray(meta)) {
+    throw new Error("Invalid markdown front matter YAML: expected a mapping/object.");
+  }
+  return { meta, content };
 }
 
 function renderFrontMatter(meta: Record<string, unknown>, content: string): string {
-  const lines = Object.entries(meta).map(([k, v]) =>
-    `${k}: ${Array.isArray(v) ? `[${v.join(", ")}]` : String(v)}`
-  );
-  return `---\n${lines.join("\n")}\n---\n${content}`;
+  const yaml = yamlDump(meta, {
+    lineWidth: -1,
+    noRefs: true,
+    sortKeys: true
+  }).trimEnd();
+  return `---\n${yaml}\n---\n${content.replace(/\r\n/g, "\n")}`;
 }
 
 function apmPaths(cwd: string) {
@@ -444,6 +433,9 @@ function buildProgram(): Command {
         now: nowLocal(),
         role,
         persist,
+        persistenceLinks: {
+          chunks: chunks.map((c) => ({ name: c.name, keywords: c.keywords }))
+        },
         currentTask: task ? `${task.name}: ${task.description}` : "",
         todos: todos.map((t) => ({
           name: t.name,
@@ -470,6 +462,9 @@ function buildProgram(): Command {
         "",
         "## Persist",
         persist || "(empty)",
+        "",
+        "## 持久化关联",
+        chunks.length === 0 ? "(empty)" : chunks.map((c) => `- ${c.name} (${c.keywords.join(", ")})`).join("\n"),
         "",
         "## Current Task",
         payload.currentTask || "(none)",
@@ -519,7 +514,9 @@ function buildProgram(): Command {
       .action(async (opts: { start: string; end: string; text: string }) => {
         const cwd = process.cwd();
         ensureApm(cwd);
-        await editSection(cwd, section, Number(opts.start), Number(opts.end), opts.text);
+        const start = parsePositiveInt("--start", opts.start);
+        const end = parsePositiveInt("--end", opts.end);
+        await editSection(cwd, section, start, end, opts.text);
         console.log("OK");
       });
   };
@@ -753,6 +750,9 @@ function buildProgram(): Command {
       ensureApm(cwd);
       const size = parsePositiveInt("--size", opts.size);
       const page = parsePositiveInt("--page", opts.page);
+      if (opts.order !== "asc" && opts.order !== "desc") {
+        throw new Error(`Invalid --order: ${String(opts.order)}. Expected asc|desc.`);
+      }
       const orderFactor = opts.order === "desc" ? -1 : 1;
       const sortField = opts.sort;
       if (!["name", "createdAt", "updatedAt"].includes(sortField)) {

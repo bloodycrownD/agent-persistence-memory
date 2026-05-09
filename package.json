@@ -4,6 +4,7 @@
   "description": "CLI for external agent persistence memory",
   "main": "dist/index.js",
   "bin": {
+    "apm": "dist/index.js",
     "agent-memory": "dist/index.js"
   },
   "scripts": {
@@ -19,10 +20,12 @@
   "type": "commonjs",
   "dependencies": {
     "commander": "^14.0.3",
+    "js-yaml": "^4.1.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^25.6.2",
+    "@types/js-yaml": "^4.0.9",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.5"

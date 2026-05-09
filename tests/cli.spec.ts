@@ -115,6 +115,7 @@ describe("apm cli spec paths", () => {
     expect(await runCliFail(["chunks", "list", "--size", "0"], dir)).toContain("Invalid --size");
     expect(await runCliFail(["chunks", "list", "--page", "-2"], dir)).toContain("Invalid --page");
     expect(await runCliFail(["chunks", "list", "--page", "1.2"], dir)).toContain("Invalid --page");
+    expect(await runCliFail(["chunks", "list", "--order", "nope"], dir)).toContain("Invalid --order");
   });
 
   it("supports chunks edit rename with safe-name + uniqueness", async () => {
@@ -145,6 +146,25 @@ describe("apm cli spec paths", () => {
     expect(parsed.role).toBe("my role");
     expect(parsed.currentTask).toContain("todoA");
     expect(Array.isArray(parsed.chunks)).toBe(true);
+    expect(Array.isArray(parsed.persistenceLinks?.chunks)).toBe(true);
+  });
+
+  it("validates edit --start/--end numeric inputs with clear errors", async () => {
+    const dir = newTempDir();
+    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
+    await runCli(["role", "write", "--text", "hello\nworld"], dir);
+    expect(await runCliFail(["role", "edit", "--start", "NaN", "--end", "1", "--text", "x"], dir)).toContain(
+      "Invalid --start"
+    );
+    expect(await runCliFail(["role", "edit", "--start", "0", "--end", "1", "--text", "x"], dir)).toContain(
+      "Invalid --start"
+    );
+    expect(await runCliFail(["role", "edit", "--start", "1.2", "--end", "1", "--text", "x"], dir)).toContain(
+      "Invalid --start"
+    );
+    expect(await runCliFail(["role", "edit", "--start", "1", "--end", "Infinity", "--text", "x"], dir)).toContain(
+      "Invalid --end"
+    );
   });
 });
 
