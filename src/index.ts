@@ -79,6 +79,14 @@ export function assertSafeName(name: string): void {
   }
 }
 
+function parsePositiveInt(flag: string, raw: string): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
+    throw new Error(`Invalid ${flag}: ${raw}. Expected a finite positive integer.`);
+  }
+  return n;
+}
+
 function countChars(text: string): number {
   return Array.from(text).length;
 }
@@ -220,9 +228,10 @@ function ensureApm(cwd: string): void {
       "utf8"
     );
   }
-  if (!existsSync(p.role)) writeFileSync(p.role, "", "utf8");
-  if (!existsSync(p.persist)) writeFileSync(p.persist, "", "utf8");
-  if (!existsSync(p.detail)) writeFileSync(p.detail, "", "utf8");
+  const emptySection = renderFrontMatter({ createdAt: now, updatedAt: now }, "");
+  if (!existsSync(p.role)) writeFileSync(p.role, emptySection, "utf8");
+  if (!existsSync(p.persist)) writeFileSync(p.persist, emptySection, "utf8");
+  if (!existsSync(p.detail)) writeFileSync(p.detail, emptySection, "utf8");
 }
 
 function readJson<T>(path: string, schema: z.ZodType<T>): T {
@@ -285,20 +294,43 @@ function readText(path: string): string {
   return readFileSync(path, "utf8");
 }
 
+type SectionMeta = { createdAt: string; updatedAt: string };
+
+function readSectionFile(path: string): { meta: SectionMeta | null; content: string } {
+  const raw = readText(path);
+  if (!raw.startsWith("---\n")) {
+    return { meta: null, content: raw };
+  }
+  const parsed = parseFrontMatter(raw);
+  const meta = z
+    .object({ createdAt: z.string(), updatedAt: z.string() })
+    .passthrough()
+    .parse(parsed.meta);
+  return { meta: { createdAt: meta.createdAt, updatedAt: meta.updatedAt }, content: parsed.content };
+}
+
+function readSectionContent(cwd: string, section: Section): string {
+  const p = sectionPath(cwd, section);
+  return readSectionFile(p).content;
+}
+
 async function writeSection(cwd: string, section: Section, text: string): Promise<void> {
   enforceLimits(cwd, section, text);
   const p = sectionPath(cwd, section);
   const paths = apmPaths(cwd);
+  const prev = readSectionFile(p);
+  const createdAt = prev.meta?.createdAt ?? nowLocal();
+  const payload = renderFrontMatter({ createdAt, updatedAt: nowLocal() }, text);
   await withGlobalLock(paths.lock, async () => {
     await serialWrite(p, async () => {
-      await atomicWrite(p, text);
+      await atomicWrite(p, payload);
     });
   });
 }
 
 async function editSection(cwd: string, section: Section, start: number, end: number, text: string): Promise<void> {
   const p = sectionPath(cwd, section);
-  const lines = readText(p).split("\n");
+  const lines = readSectionFile(p).content.split("\n");
   validateRange(lines, start, end);
   lines.splice(start - 1, end - start + 1, ...text.split("\n"));
   await writeSection(cwd, section, lines.join("\n"));
@@ -401,9 +433,9 @@ function buildProgram(): Command {
       const cwd = process.cwd();
       ensureApm(cwd);
       const p = apmPaths(cwd);
-      const role = readText(p.role);
-      const persist = readText(p.persist);
-      const detail = readText(p.detail);
+      const role = readSectionContent(cwd, "role");
+      const persist = readSectionContent(cwd, "persist");
+      const detail = readSectionContent(cwd, "tmpDetail");
       const todos = listTodos(cwd);
       const chunks = listChunks(cwd);
       const task = currentTask(todos);
@@ -471,7 +503,7 @@ function buildProgram(): Command {
     cmd.command("show").action(() => {
       const cwd = process.cwd();
       ensureApm(cwd);
-      console.log(toLineNumbered(readText(sectionPath(cwd, section))));
+      console.log(toLineNumbered(readSectionContent(cwd, section)));
     });
     cmd.command("write").requiredOption("--text <text>").action(async (opts: { text: string }) => {
       const cwd = process.cwd();
@@ -498,7 +530,7 @@ function buildProgram(): Command {
   tmp.command("show").action(() => {
     const cwd = process.cwd();
     ensureApm(cwd);
-    const detail = readText(apmPaths(cwd).detail);
+    const detail = readSectionContent(cwd, "tmpDetail");
     const todos = listTodos(cwd)
       .map((t) => `- [${t.completed ? "x" : " "}] #${t.index} p${t.priority} ${t.name}: ${t.description}`)
       .join("\n");
@@ -536,7 +568,8 @@ function buildProgram(): Command {
       ensureApm(cwd);
       assertSafeName(opts.name);
       const all = listTodos(cwd);
-      const index = Number(opts.index);
+      const index = parsePositiveInt("--index", opts.index);
+      const priority = parsePositiveInt("--priority", opts.priority);
       if (all.some((t) => t.name === opts.name)) throw new Error(`Todo name exists: ${opts.name}`);
       if (all.some((t) => t.index === index)) throw new Error(`Todo index exists: ${index}`);
       if (!opts.description.trim()) throw new Error("Todo description is required.");
@@ -548,7 +581,7 @@ function buildProgram(): Command {
         name: opts.name,
         description: opts.description,
         index,
-        priority: Number(opts.priority),
+        priority,
         completed: false,
         createdAt: now,
         updatedAt: now
@@ -561,8 +594,9 @@ function buildProgram(): Command {
     .action((opts: { index: string }) => {
       const cwd = process.cwd();
       ensureApm(cwd);
-      const item = listTodos(cwd).find((t) => t.index === Number(opts.index));
-      if (!item) throw new Error(`Todo index not found: ${opts.index}`);
+      const index = parsePositiveInt("--index", opts.index);
+      const item = listTodos(cwd).find((t) => t.index === index);
+      if (!item) throw new Error(`Todo index not found: ${index}`);
       rmSync(todoPath(cwd, item.name));
       console.log("OK");
     });
@@ -575,8 +609,9 @@ function buildProgram(): Command {
       const cwd = process.cwd();
       ensureApm(cwd);
       const all = listTodos(cwd);
-      const current = all.find((t) => t.index === Number(opts.index));
-      if (!current) throw new Error(`Todo index not found: ${opts.index}`);
+      const index = parsePositiveInt("--index", opts.index);
+      const current = all.find((t) => t.index === index);
+      if (!current) throw new Error(`Todo index not found: ${index}`);
       const nextName = opts.name ?? current.name;
       assertSafeName(nextName);
       if (nextName !== current.name && all.some((t) => t.name === nextName)) {
@@ -607,8 +642,9 @@ function buildProgram(): Command {
       const cwd = process.cwd();
       ensureApm(cwd);
       const all = listTodos(cwd);
-      const current = all.find((t) => t.index === Number(opts.index));
-      if (!current) throw new Error(`Todo index not found: ${opts.index}`);
+      const index = parsePositiveInt("--index", opts.index);
+      const current = all.find((t) => t.index === index);
+      if (!current) throw new Error(`Todo index not found: ${index}`);
       await writeTodo(cwd, { ...current, completed: opts.done === "true", updatedAt: nowLocal() });
       console.log("OK");
     });
@@ -620,9 +656,11 @@ function buildProgram(): Command {
       const cwd = process.cwd();
       ensureApm(cwd);
       const all = listTodos(cwd);
-      const current = all.find((t) => t.index === Number(opts.index));
-      if (!current) throw new Error(`Todo index not found: ${opts.index}`);
-      await writeTodo(cwd, { ...current, priority: Number(opts.priority), updatedAt: nowLocal() });
+      const index = parsePositiveInt("--index", opts.index);
+      const priority = parsePositiveInt("--priority", opts.priority);
+      const current = all.find((t) => t.index === index);
+      if (!current) throw new Error(`Todo index not found: ${index}`);
+      await writeTodo(cwd, { ...current, priority, updatedAt: nowLocal() });
       console.log("OK");
     });
 
@@ -661,18 +699,46 @@ function buildProgram(): Command {
   chunks
     .command("edit")
     .requiredOption("--name <name>")
+    .option("--new-name <name>", "rename chunk (safe unique name)")
     .option("--keywords <keywords>")
     .option("--text <text>")
-    .action(async (opts: { name: string; keywords?: string; text?: string }) => {
+    .action(async (opts: { name: string; newName?: string; keywords?: string; text?: string }) => {
       const cwd = process.cwd();
       ensureApm(cwd);
       const current = listChunks(cwd).find((c) => c.name === opts.name);
       if (!current) throw new Error(`Chunk not found: ${opts.name}`);
-      await writeChunk(cwd, {
+      const nextName = opts.newName ?? current.name;
+      assertSafeName(nextName);
+      const next: ChunkDoc = {
         ...current,
+        name: nextName,
         keywords: opts.keywords ? opts.keywords.split(",").map((s) => s.trim()).filter(Boolean) : current.keywords,
         content: opts.text ?? current.content,
         updatedAt: nowLocal()
+      };
+      if (next.name === current.name) {
+        await writeChunk(cwd, next);
+        console.log("OK");
+        return;
+      }
+      const paths = apmPaths(cwd);
+      const oldPath = chunkPath(cwd, current.name);
+      const newPath = chunkPath(cwd, next.name);
+      await withGlobalLock(paths.lock, async () => {
+        if (existsSync(newPath)) throw new Error(`Chunk name exists: ${next.name}`);
+        const payload = renderFrontMatter(
+          {
+            name: next.name,
+            keywords: next.keywords,
+            createdAt: next.createdAt,
+            updatedAt: next.updatedAt
+          },
+          next.content
+        );
+        await serialWrite(newPath, async () => {
+          await atomicWrite(newPath, payload);
+        });
+        rmSync(oldPath);
       });
       console.log("OK");
     });
@@ -685,8 +751,8 @@ function buildProgram(): Command {
     .action((opts: { size: string; page: string; order: "asc" | "desc"; sort: SortField }) => {
       const cwd = process.cwd();
       ensureApm(cwd);
-      const size = Number(opts.size);
-      const page = Number(opts.page);
+      const size = parsePositiveInt("--size", opts.size);
+      const page = parsePositiveInt("--page", opts.page);
       const orderFactor = opts.order === "desc" ? -1 : 1;
       const sortField = opts.sort;
       if (!["name", "createdAt", "updatedAt"].includes(sortField)) {
