@@ -1,5 +1,6 @@
 import type { TodoDoc } from "./todos-service";
 import type { ChunkDoc } from "./chunks-service";
+import type { ReadAssociations } from "./read-associations";
 
 export function currentTask(todos: TodoDoc[]): TodoDoc | null {
   const open = todos.filter((t) => !t.completed);
@@ -12,12 +13,13 @@ export function renderReadText(payload: {
   now: string;
   role: string;
   persist: string;
+  associations: ReadAssociations;
   currentTask: string;
   todos: TodoDoc[];
   detail: string;
   chunks: ChunkDoc[];
 }): string {
-  const { lastTime, now, role, persist, currentTask, todos, detail, chunks } = payload;
+  const { lastTime, now, role, persist, associations, currentTask, todos, detail, chunks } = payload;
   return [
     "# APM Memory Read",
     `Last Time: ${lastTime ?? "N/A"}`,
@@ -30,7 +32,18 @@ export function renderReadText(payload: {
     persist || "(empty)",
     "",
     "## 持久化关联",
-    chunks.length === 0 ? "(empty)" : chunks.map((c) => `- ${c.name} (${c.keywords.join(", ")})`).join("\n"),
+    associations.persistenceKeywords.length === 0
+      ? "(empty)"
+      : [
+          `Keywords: ${associations.persistenceKeywords.join(", ")}`,
+          "",
+          associations.selectedChunks.length === 0
+            ? "Chunks: (empty)"
+            : ["Chunks:", ...associations.selectedChunks.map((c) => `- ${c.name} (${c.keywords.join(", ")})`)].join("\n")
+        ].join("\n"),
+    "",
+    "## 联想关键词",
+    associations.associativeKeywords.length === 0 ? "(empty)" : associations.associativeKeywords.join(", "),
     "",
     "## Current Task",
     currentTask || "(none)",

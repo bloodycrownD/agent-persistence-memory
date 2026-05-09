@@ -6,6 +6,7 @@ import { listTodos } from "../../services/todos-service";
 import { listChunks } from "../../services/chunks-service";
 import { currentTask, renderReadText } from "../../services/read-service";
 import { readStatus, updateStatus } from "../../services/status-service";
+import { buildReadAssociations } from "../../services/read-associations";
 
 export function registerRead(program: Command): void {
   program
@@ -21,6 +22,7 @@ export function registerRead(program: Command): void {
       const todos = listTodos(cwd);
       const chunks = listChunks(cwd);
       const task = currentTask(todos);
+      const associations = buildReadAssociations({ persistText: persist, detailText: detail, todos, chunks });
 
       const payload = {
         lastTime: readStatus(cwd).lastReadAt,
@@ -28,7 +30,11 @@ export function registerRead(program: Command): void {
         role,
         persist,
         persistenceLinks: {
-          chunks: chunks.map((c) => ({ name: c.name, keywords: c.keywords }))
+          keywords: associations.persistenceKeywords,
+          chunks: associations.selectedChunks.map((c) => ({ name: c.name, keywords: c.keywords, score: c.score }))
+        },
+        associative: {
+          keywords: associations.associativeKeywords
         },
         currentTask: task ? `${task.name}: ${task.description}` : "",
         todos: todos.map((t) => ({
@@ -55,6 +61,7 @@ export function registerRead(program: Command): void {
           now: payload.now,
           role,
           persist,
+          associations,
           currentTask: payload.currentTask,
           todos,
           detail,
