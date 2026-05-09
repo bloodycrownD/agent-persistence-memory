@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { LocalTimestampSchema } from "./local-timestamp";
 
 export const StatusSchema = z.object({
-  initializedAt: z.string(),
-  updatedAt: z.string(),
-  lastReadAt: z.string().nullable()
+  initializedAt: LocalTimestampSchema,
+  updatedAt: LocalTimestampSchema,
+  lastReadAt: LocalTimestampSchema.nullable()
 });
 
 export const STATUS_SHAPE_HINT = `{

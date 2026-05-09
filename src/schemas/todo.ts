@@ -1,12 +1,13 @@
 import { z } from "zod";
+import { LocalTimestampSchema } from "./local-timestamp";
 
 export const TodoMetaSchema = z.object({
   name: z.string().min(1),
   index: z.number().int().min(1),
   priority: z.number().int().min(1),
   completed: z.boolean(),
-  createdAt: z.string(),
-  updatedAt: z.string()
+  createdAt: LocalTimestampSchema,
+  updatedAt: LocalTimestampSchema
 });
 
 export const TODO_FRONT_MATTER_HINT = `---

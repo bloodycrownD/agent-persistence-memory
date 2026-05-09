@@ -1,10 +1,11 @@
 import { z } from "zod";
+import { LocalTimestampSchema } from "./local-timestamp";
 
 export const ChunkMetaSchema = z.object({
   name: z.string().min(1),
   keywords: z.array(z.string()),
-  createdAt: z.string(),
-  updatedAt: z.string()
+  createdAt: LocalTimestampSchema,
+  updatedAt: LocalTimestampSchema
 });
 
 export const CHUNK_FRONT_MATTER_HINT = `---

@@ -189,5 +189,73 @@ describe("apm cli spec paths", () => {
     expect(message).toContain("createdAt");
     expect(message).toContain("YYYY-MM-DD HH:mm:ss");
   });
+
+  it("validates status schema timestamp format with actionable field error", async () => {
+    const dir = newTempDir();
+    await runCli(["read"], dir);
+    writeFileSync(
+      join(dir, ".apm", "status.json"),
+      JSON.stringify(
+        {
+          initializedAt: "2026-01-01T10:00:00",
+          updatedAt: "2026-01-01 10:00:00",
+          lastReadAt: null
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+    const message = await runCliFail(["read"], dir);
+    expect(message).toContain("Invalid status file");
+    expect(message).toContain("initializedAt");
+    expect(message).toContain("YYYY-MM-DD HH:mm:ss");
+  });
+
+  it("validates todo front matter timestamp format with actionable field error", async () => {
+    const dir = newTempDir();
+    await runCli(["tmp", "todos", "add", "--name", "t1", "--description", "hello", "--index", "1"], dir);
+    writeFileSync(
+      join(dir, ".apm", "tmp", "todos", "t1.md"),
+      [
+        "---",
+        'name: "t1"',
+        "index: 1",
+        "priority: 5",
+        "completed: false",
+        'createdAt: "2026/01/01 10:00:00"',
+        'updatedAt: "2026-01-01 10:00:00"',
+        "---",
+        "hello"
+      ].join("\n"),
+      "utf8"
+    );
+    const message = await runCliFail(["tmp", "todos", "show"], dir);
+    expect(message).toContain("Invalid todo front matter");
+    expect(message).toContain("createdAt");
+    expect(message).toContain("YYYY-MM-DD HH:mm:ss");
+  });
+
+  it("validates chunk front matter timestamp format with actionable field error", async () => {
+    const dir = newTempDir();
+    await runCli(["chunks", "add", "--name", "c1", "--keywords", "alpha", "--text", "hello"], dir);
+    writeFileSync(
+      join(dir, ".apm", "chunks", "c1.md"),
+      [
+        "---",
+        'name: "c1"',
+        'keywords: ["alpha"]',
+        'createdAt: "2026-01-01 10:00"',
+        'updatedAt: "2026-01-01 10:00:00"',
+        "---",
+        "hello"
+      ].join("\n"),
+      "utf8"
+    );
+    const message = await runCliFail(["chunks", "list"], dir);
+    expect(message).toContain("Invalid chunk front matter");
+    expect(message).toContain("createdAt");
+    expect(message).toContain("YYYY-MM-DD HH:mm:ss");
+  });
 });
 
