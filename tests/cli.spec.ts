@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -26,6 +26,15 @@ async function runCli(args: string[], cwd: string): Promise<{ out: string; err: 
   }
 }
 
+async function runCliFail(args: string[], cwd: string): Promise<string> {
+  try {
+    await runCli(args, cwd);
+    throw new Error("Expected command to fail.");
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
+}
+
 function newTempDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "apm-cli-test-"));
   tempDirs.push(dir);
@@ -45,6 +54,8 @@ describe("apm cli spec paths", () => {
     await runCli(["role", "write", "--text", "abcdef"], dir);
     const shown = await runCli(["role", "show"], dir);
     expect(shown.out).toContain("1|abcdef");
+    const roleFile = readFileSync(join(dir, ".apm", "role.md"), "utf8");
+    expect(roleFile.startsWith("---\n")).toBe(true);
   });
 
   it("supports tmp todos add/list/complete with uniqueness", async () => {
@@ -62,6 +73,28 @@ describe("apm cli spec paths", () => {
     expect(shown.out).toContain("[x]");
   });
 
+  it("validates todo numeric inputs (index/priority) with clear errors", async () => {
+    const dir = newTempDir();
+    expect(await runCliFail(["tmp", "todos", "add", "--name", "t1", "--description", "x", "--index", "0"], dir)).toContain(
+      "Invalid --index"
+    );
+    expect(
+      await runCliFail(
+        ["tmp", "todos", "add", "--name", "t1", "--description", "x", "--index", "1", "--priority", "NaN"],
+        dir
+      )
+    ).toContain("Invalid --priority");
+    await runCli(["tmp", "todos", "add", "--name", "t1", "--description", "x", "--index", "1", "--priority", "2"], dir);
+    expect(await runCliFail(["tmp", "todos", "priority", "--index", "1", "--priority", "1.5"], dir)).toContain(
+      "Invalid --priority"
+    );
+    expect(await runCliFail(["tmp", "todos", "complete", "--index", "-1"], dir)).toContain("Invalid --index");
+    expect(await runCliFail(["tmp", "todos", "rm", "--index", "abc"], dir)).toContain("Invalid --index");
+    expect(await runCliFail(["tmp", "todos", "edit", "--index", "Infinity", "--description", "y"], dir)).toContain(
+      "Invalid --index"
+    );
+  });
+
   it("supports chunks add/list/search/read", async () => {
     const dir = newTempDir();
     await runCli(["chunks", "add", "--name", "c1", "--keywords", "alpha,beta", "--text", "first content"], dir);
@@ -74,6 +107,28 @@ describe("apm cli spec paths", () => {
     const read = await runCli(["chunks", "read", "--names", "c1,c2"], dir);
     expect(read.out).toContain("## c1");
     expect(read.out).toContain("## c2");
+  });
+
+  it("validates chunks list numeric args (size/page)", async () => {
+    const dir = newTempDir();
+    await runCli(["chunks", "add", "--name", "c1", "--keywords", "k", "--text", "x"], dir);
+    expect(await runCliFail(["chunks", "list", "--size", "0"], dir)).toContain("Invalid --size");
+    expect(await runCliFail(["chunks", "list", "--page", "-2"], dir)).toContain("Invalid --page");
+    expect(await runCliFail(["chunks", "list", "--page", "1.2"], dir)).toContain("Invalid --page");
+  });
+
+  it("supports chunks edit rename with safe-name + uniqueness", async () => {
+    const dir = newTempDir();
+    await runCli(["chunks", "add", "--name", "c1", "--keywords", "alpha", "--text", "first"], dir);
+    await runCli(["chunks", "add", "--name", "c2", "--keywords", "beta", "--text", "second"], dir);
+    expect(await runCliFail(["chunks", "edit", "--name", "c1", "--new-name", "c2"], dir)).toContain("Chunk name exists");
+    expect(await runCliFail(["chunks", "edit", "--name", "c1", "--new-name", "../bad"], dir)).toContain("Invalid name");
+    await runCli(["chunks", "edit", "--name", "c1", "--new-name", "c1_renamed", "--text", "updated"], dir);
+    const listed = await runCli(["chunks", "list"], dir);
+    expect(listed.out).toContain("c1_renamed");
+    expect(await runCliFail(["chunks", "read", "--names", "c1"], dir)).toContain("Chunk not found");
+    const read = await runCli(["chunks", "read", "--names", "c1_renamed"], dir);
+    expect(read.out).toContain("updated");
   });
 
   it("renders read --json with current task", async () => {
