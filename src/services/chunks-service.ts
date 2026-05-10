@@ -1,6 +1,11 @@
+/**
+ * Chunk persistence: all writes validate content and serialize here so callers cannot bypass limits.
+ */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { assertChunkContentWithinLimit } from "../core/doc-limits";
+import { RENAME_CHUNK_REQUIRES_DISTINCT_NAMES } from "../core/limits-messages";
 import { assertSafeName } from "../core/name-sanitize";
 import { formatZodError } from "../core/schema-errors";
 import { parseFrontMatter, renderFrontMatter } from "../storage/markdown";
@@ -11,6 +16,19 @@ import { serialRm, serialWrite } from "../storage/serial";
 import { atomicWrite } from "../storage/fs-atomic";
 
 export type ChunkDoc = z.infer<typeof ChunkMetaSchema> & { content: string };
+
+function serializeChunk(chunk: ChunkDoc): string {
+  assertChunkContentWithinLimit(chunk.content);
+  return renderFrontMatter(
+    {
+      name: chunk.name,
+      keywords: chunk.keywords,
+      createdAt: chunk.createdAt,
+      updatedAt: chunk.updatedAt
+    },
+    chunk.content
+  );
+}
 
 function chunkPath(cwd: string, name: string): string {
   assertSafeName(name);
@@ -47,15 +65,7 @@ export function listChunks(cwd: string): ChunkDoc[] {
 export async function writeChunk(cwd: string, chunk: ChunkDoc): Promise<void> {
   const paths = apmPaths(cwd);
   const file = chunkPath(cwd, chunk.name);
-  const payload = renderFrontMatter(
-    {
-      name: chunk.name,
-      keywords: chunk.keywords,
-      createdAt: chunk.createdAt,
-      updatedAt: chunk.updatedAt
-    },
-    chunk.content
-  );
+  const payload = serializeChunk(chunk);
   await withGlobalLock(paths.lock, async () => {
     await serialWrite(file, async () => {
       await atomicWrite(file, payload);
@@ -72,12 +82,16 @@ export async function rmChunk(cwd: string, name: string): Promise<void> {
   });
 }
 
-export async function renameChunk(cwd: string, fromName: string, toName: string, payload: string): Promise<void> {
+export async function renameChunk(cwd: string, fromName: string, next: ChunkDoc): Promise<void> {
+  if (fromName === next.name) {
+    throw new Error(RENAME_CHUNK_REQUIRES_DISTINCT_NAMES);
+  }
   const paths = apmPaths(cwd);
   const oldPath = chunkPath(cwd, fromName);
-  const newPath = chunkPath(cwd, toName);
+  const newPath = chunkPath(cwd, next.name);
+  const payload = serializeChunk(next);
   await withGlobalLock(paths.lock, async () => {
-    if (existsSync(newPath)) throw new Error(`Chunk name exists: ${toName}`);
+    if (existsSync(newPath)) throw new Error(`Chunk name exists: ${next.name}`);
     await serialWrite(newPath, async () => {
       await atomicWrite(newPath, payload);
     });

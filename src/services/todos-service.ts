@@ -1,6 +1,10 @@
+/**
+ * Todo persistence: writeTodoUnlocked enforces combo length and description rules before render.
+ */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { assertTodoWritable } from "../core/doc-limits";
 import { assertSafeName } from "../core/name-sanitize";
 import { formatZodError } from "../core/schema-errors";
 import { parseFrontMatter, renderFrontMatter } from "../storage/markdown";
@@ -53,6 +57,7 @@ export async function writeTodo(cwd: string, todo: TodoDoc): Promise<void> {
 }
 
 async function writeTodoUnlocked(cwd: string, todo: TodoDoc): Promise<void> {
+  assertTodoWritable(todo);
   const file = todoPath(cwd, todo.name);
   const payload = renderFrontMatter(
     {
