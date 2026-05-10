@@ -12,7 +12,7 @@ import {
 } from "../src/core/limits-messages";
 import { ensureApm } from "../src/storage/paths";
 import { readChunkFile, renameChunk, writeChunk, type ChunkDoc } from "../src/services/chunks-service";
-import { writeTodo, type TodoDoc } from "../src/services/todos-service";
+import { renameTodo, writeTodo, type TodoDoc } from "../src/services/todos-service";
 
 const tempDirs: string[] = [];
 
@@ -146,6 +146,29 @@ describe("write limits (service + CLI)", () => {
     const dir = newTempDir();
     ensureApm(dir);
     await expect(writeTodo(dir, baseTodo("t", "   "))).rejects.toThrow(TODO_DESCRIPTION_REQUIRED_ERROR);
+  });
+
+  it("T6b: renameTodo rejects when next violates combo limit (direct service call)", async () => {
+    const dir = newTempDir();
+    ensureApm(dir);
+    const valid = baseTodo("t1", "ok");
+    await writeTodo(dir, valid);
+    const next: TodoDoc = {
+      ...valid,
+      description: "d".repeat(99),
+      updatedAt: nowLocal()
+    };
+    expect(next.name.length + next.description.length).toBeGreaterThan(100);
+    await expect(renameTodo(dir, "t1", next)).rejects.toThrow(TODO_COMBO_LENGTH_ERROR);
+  });
+
+  it("T6c: renameTodo rejects whitespace-only description on rename", async () => {
+    const dir = newTempDir();
+    ensureApm(dir);
+    const valid = baseTodo("t1", "ok");
+    await writeTodo(dir, valid);
+    const next: TodoDoc = { ...valid, description: "  \t  ", updatedAt: nowLocal() };
+    await expect(renameTodo(dir, "t1", next)).rejects.toThrow(TODO_DESCRIPTION_REQUIRED_ERROR);
   });
 
   it("T7: CLI chunks add surfaces chunk length error constant", async () => {
