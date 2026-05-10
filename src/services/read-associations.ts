@@ -1,7 +1,13 @@
 /**
  * Scores chunks against inverted-index style query terms for two independent read contexts:
  * persistence (persist-heavy) vs associative memory (detail + current task, lighter persist).
- * Keeps ranking deterministic without NLP dependencies.
+ *
+ * Token coverage:
+ * - Latin-ish identifiers via ascii tokenizer + stopwords.
+ * - CJK via contiguous‑Han bigrams so中文正文可以与 persist/detail 对齐打分。
+ *
+ * After ranking, chunks with identical trimmed {@link ChunkDoc.content} are deduped so imports / retries
+ * do not fill Primary with重复全文。
  */
 import type { ChunkDoc } from "./chunks-service";
 import type { TodoDoc } from "./todos-service";
@@ -95,14 +101,30 @@ const STOPWORDS = new Set(
   ].map((s) => s.toLowerCase())
 );
 
+/** Sliding bigrams over unified Han spans — cheap deterministic recall without an NLP dict. */
+function chineseBigrams(text: string): string[] {
+  const out: string[] = [];
+  for (const seg of text.match(/[\u4e00-\u9fff]+/g) ?? []) {
+    if (seg.length < 2) continue;
+    for (let i = 0; i < seg.length - 1; i++) {
+      out.push(seg.slice(i, i + 2));
+    }
+  }
+  return out;
+}
+
 function tokenize(text: string): string[] {
-  return text
+  const asciiTokens = text
     .toLowerCase()
     .split(/[^a-z0-9_]+/g)
     .map((t) => t.trim())
     .filter((t) => t.length >= 3)
     .filter((t) => !STOPWORDS.has(t));
+  return [...asciiTokens, ...chineseBigrams(text)];
 }
+
+/** Lower score multiplier vs keyword overlap — avoids正文淹没 curated keywords */
+const CONTENT_OVERLAP_WEIGHT = 0.35;
 
 function addWeightedTokens(termScore: Map<string, number>, text: string, weight: number): void {
   if (!text) return;
@@ -126,9 +148,17 @@ function clampKeywordCount(candidates: string[], opts: { min: number; max: numbe
 function scoreChunkAgainstTerms(chunk: ChunkDoc, queryWeight: Map<string, number>): number {
   let score = 0;
   for (const kw of chunk.keywords) {
-    const t = kw.toLowerCase().trim();
-    const w = queryWeight.get(t);
+    const raw = kw.trim();
+    const lower = raw.toLowerCase();
+    const w = queryWeight.get(raw) ?? queryWeight.get(lower);
     if (w) score += w;
+  }
+  const seenContentTok = new Set<string>();
+  for (const tok of tokenize(chunk.content)) {
+    if (seenContentTok.has(tok)) continue;
+    seenContentTok.add(tok);
+    const w = queryWeight.get(tok);
+    if (w) score += w * CONTENT_OVERLAP_WEIGHT;
   }
   return score;
 }
@@ -139,6 +169,20 @@ function rankChunks(chunks: ChunkDoc[], queryWeight: Map<string, number>): Chunk
     .filter((x) => x.s > 0)
     .sort((a, b) => b.s - a.s || a.c.name.localeCompare(b.c.name))
     .map((x) => x.c);
+}
+
+/** Same markdown body should only occupy one tier slot (duplicate imports / renamed copies). */
+function dedupeChunksByContent(chunks: ChunkDoc[]): ChunkDoc[] {
+  const seen = new Set<string>();
+  const out: ChunkDoc[] = [];
+  for (const c of chunks) {
+    const body = c.content.trim();
+    const key = body.length > 0 ? body : `__empty__:${c.name}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+  }
+  return out;
 }
 
 const TIER_TOP_N = 8;
@@ -220,7 +264,7 @@ export function buildReadAssociations(input: {
 
   const persistenceKeywords = buildPersistenceKeywords(persistenceTerms);
 
-  const persistenceRanked = rankChunks(chunks, persistenceTerms);
+  const persistenceRanked = dedupeChunksByContent(rankChunks(chunks, persistenceTerms));
   const persistenceScorer = (c: ChunkDoc) => scoreChunkAgainstTerms(c, persistenceTerms);
   const { primary: persistencePrimary, secondary: persistenceSecondary } = splitTiers(
     persistenceRanked,
@@ -233,7 +277,7 @@ export function buildReadAssociations(input: {
   addWeightedTokens(associativeTerms, detailText, 2.5);
   addWeightedTokens(associativeTerms, currentTaskText, 2.0);
 
-  const associativeRanked = rankChunks(chunks, associativeTerms);
+  const associativeRanked = dedupeChunksByContent(rankChunks(chunks, associativeTerms));
   const associativeScorer = (c: ChunkDoc) => scoreChunkAgainstTerms(c, associativeTerms);
   const { primary: associativePrimary, secondary: associativeSecondary } = splitTiers(
     associativeRanked,

@@ -210,6 +210,22 @@ describe("apm cli spec paths", () => {
     expect(parsed.associative.keywords).toContain("snapshot");
   });
 
+  it("dedupes read tiers when chunk bodies are identical", async () => {
+    const dir = newTempDir();
+    await runCli(["config", "set", "--section", "persist", "--min", "1", "--max", "1000"], dir);
+    await runCli(["config", "set", "--section", "tmpDetail", "--min", "1", "--max", "1000"], dir);
+    await runCli(["persist", "write", "--text", "alpha beta gamma uniquemarker xyz"], dir);
+    await runCli(["chunks", "add", "--name", "dup_a", "--keywords", "alpha,beta", "--text", "same-body"], dir);
+    await runCli(["chunks", "add", "--name", "dup_b", "--keywords", "alpha,gamma", "--text", "same-body"], dir);
+    const result = await runCli(["read", "--json"], dir);
+    const parsed = JSON.parse(result.out);
+    const tierNames = [
+      ...parsed.persistenceLinks.primary.map((c: { name: string }) => c.name),
+      ...parsed.persistenceLinks.secondary.map((c: { name: string }) => c.name)
+    ];
+    expect(tierNames.filter((n: string) => n === "dup_a" || n === "dup_b").length).toBeLessThanOrEqual(1);
+  });
+
   it("validates edit --start/--end numeric inputs with clear errors", async () => {
     const dir = newTempDir();
     await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
