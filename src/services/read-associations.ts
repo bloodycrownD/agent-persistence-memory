@@ -113,6 +113,15 @@ function chineseBigrams(text: string): string[] {
   return out;
 }
 
+/** Whole contiguous Han runs (and singles): fixes persist/detail that only contain short words bigrams miss alone. */
+function chineseSegments(text: string): string[] {
+  const out: string[] = [];
+  for (const seg of text.match(/[\u4e00-\u9fff]+/g) ?? []) {
+    if (seg.length >= 1) out.push(seg);
+  }
+  return out;
+}
+
 function tokenize(text: string): string[] {
   const asciiTokens = text
     .toLowerCase()
@@ -120,7 +129,7 @@ function tokenize(text: string): string[] {
     .map((t) => t.trim())
     .filter((t) => t.length >= 3)
     .filter((t) => !STOPWORDS.has(t));
-  return [...asciiTokens, ...chineseBigrams(text)];
+  return [...asciiTokens, ...chineseSegments(text), ...chineseBigrams(text)];
 }
 
 /** Lower score multiplier vs keyword overlap — avoids正文淹没 curated keywords */
@@ -150,7 +159,19 @@ function scoreChunkAgainstTerms(chunk: ChunkDoc, queryWeight: Map<string, number
   for (const kw of chunk.keywords) {
     const raw = kw.trim();
     const lower = raw.toLowerCase();
-    const w = queryWeight.get(raw) ?? queryWeight.get(lower);
+    let w = queryWeight.get(raw) ?? queryWeight.get(lower);
+    if (!w && /[\u4e00-\u9fff]/.test(raw)) {
+      for (const tok of chineseSegments(raw)) {
+        const hit = queryWeight.get(tok);
+        if (hit) {
+          w = (w ?? 0) + hit;
+        }
+      }
+      for (const tok of chineseBigrams(raw)) {
+        const hit = queryWeight.get(tok);
+        if (hit) w = (w ?? 0) + hit * 0.5;
+      }
+    }
     if (w) score += w;
   }
   const seenContentTok = new Set<string>();

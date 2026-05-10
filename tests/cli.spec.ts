@@ -419,5 +419,35 @@ describe("apm cli spec paths", () => {
     expect(textOut.out).toContain("## 联想关键词");
     expect(textOut.out).toContain("## Chunks（附录）");
   });
+
+  it("read associates Chinese persist/detail with chunks (segments + content overlap)", async () => {
+    const dir = newTempDir();
+    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "2000"], dir);
+    await runCli(["config", "set", "--section", "persist", "--min", "1", "--max", "2000"], dir);
+    await runCli(["config", "set", "--section", "tmpDetail", "--min", "1", "--max", "2000"], dir);
+
+    const zhPersist =
+      "虚拟机工作树界面迭代 虚拟机工作树界面迭代 虚拟机工作树界面迭代 挂载失败复盘 挂载失败复盘 挂载失败复盘 process shim VFS扩展";
+    await runCli(["persist", "write", "--text", zhPersist], dir);
+    await runCli(["tmp", "detail", "write", "--text", "本次聚焦虚拟工作树UI与挂载链路排查"], dir);
+
+    await runCli(
+      ["chunks", "add", "--name", "zh_hit", "--keywords", "虚拟机,工作树", "--text", "正文包含虚拟工作树与挂载关键词"],
+      dir
+    );
+    await runCli(["chunks", "add", "--name", "zh_noise", "--keywords", "香蕉,橘子", "--text", "无关内容"], dir);
+
+    const result = await runCli(["read", "--json"], dir);
+    const parsed = JSON.parse(result.out);
+
+    const names = [
+      ...parsed.persistenceLinks.primary.map((c: { name: string }) => c.name),
+      ...parsed.persistenceLinks.secondary.map((c: { name: string }) => c.name)
+    ];
+    expect(names).toContain("zh_hit");
+    expect(names).not.toContain("zh_noise");
+
+    expect(parsed.persistenceLinks.keywords.some((k: string) => /[\u4e00-\u9fff]/.test(k))).toBe(true);
+  });
 });
 
