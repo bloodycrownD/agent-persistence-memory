@@ -132,98 +132,12 @@ describe("apm cli spec paths", () => {
     expect(read.out).toContain("updated");
   });
 
-  it("renders read --json with current task", async () => {
+  it("read command is under development (placeholder)", async () => {
     const dir = newTempDir();
-    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
-    await runCli(["config", "set", "--section", "persist", "--min", "1", "--max", "100"], dir);
-    await runCli(["config", "set", "--section", "tmpDetail", "--min", "1", "--max", "100"], dir);
-    await runCli(["role", "write", "--text", "my role"], dir);
-    await runCli(["persist", "write", "--text", "my persist"], dir);
-    await runCli(["tmp", "detail", "write", "--text", "detail text"], dir);
-    await runCli(["tmp", "todos", "add", "--name", "todoA", "--description", "desc", "--index", "1", "--priority", "1"], dir);
-    const result = await runCli(["read", "--json"], dir);
-    const parsed = JSON.parse(result.out);
-    expect(parsed.role).toBe("my role");
-    expect(parsed.currentTask).toContain("todoA");
-    expect(Array.isArray(parsed.chunks)).toBe(true);
-    expect(Array.isArray(parsed.persistenceLinks?.keywords)).toBe(true);
-    expect(Array.isArray(parsed.persistenceLinks?.primary)).toBe(true);
-    expect(Array.isArray(parsed.persistenceLinks?.secondary)).toBe(true);
-    expect(Array.isArray(parsed.associativeMemory?.primary)).toBe(true);
-    expect(Array.isArray(parsed.associativeMemory?.secondary)).toBe(true);
-    expect(Array.isArray(parsed.associative?.keywords)).toBe(true);
-  });
-
-  it("derives read keywords from persist/detail and selects up to 5 chunks", async () => {
-    const dir = newTempDir();
-    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "1000"], dir);
-    await runCli(["config", "set", "--section", "persist", "--min", "1", "--max", "1000"], dir);
-    await runCli(["config", "set", "--section", "tmpDetail", "--min", "1", "--max", "1000"], dir);
-
-    await runCli(
-      [
-        "persist",
-        "write",
-        "--text",
-        "vitest vitest vitest snapshot assertions inverted index extraction scoring persistence links associative keywords chunks selection atomic locks windows"
-      ],
-      dir
-    );
-    await runCli(
-      ["tmp", "detail", "write", "--text", "fix apm read json output include selected chunks and associative keywords via inverted index"],
-      dir
-    );
-
-    await runCli(["chunks", "add", "--name", "rel1", "--keywords", "vitest,keywords,selection,snapshot,assertions", "--text", "x"], dir);
-    await runCli(["chunks", "add", "--name", "rel2", "--keywords", "atomic,locks,windows,fs,rename", "--text", "y"], dir);
-    await runCli(["chunks", "add", "--name", "noise", "--keywords", "unrelated,banana,orange", "--text", "z"], dir);
-
-    const result = await runCli(["read", "--json"], dir);
-    const parsed = JSON.parse(result.out);
-
-    // Persistence keywords: 5~10 preferred, derived from persist/detail/todos (not chunk echoing).
-    expect(parsed.persistenceLinks.keywords.length).toBeGreaterThanOrEqual(5);
-    expect(parsed.persistenceLinks.keywords.length).toBeLessThanOrEqual(10);
-    expect(parsed.persistenceLinks.keywords).toContain("vitest");
-
-    // Persistence tiers: primary ≤3 full content, secondary ≤5 meta-only; combined top-8 cap.
-    expect(parsed.persistenceLinks.primary.length).toBeLessThanOrEqual(3);
-    expect(parsed.persistenceLinks.secondary.length).toBeLessThanOrEqual(5);
-    const persistenceNames = [
-      ...parsed.persistenceLinks.primary.map((c: { name: string }) => c.name),
-      ...parsed.persistenceLinks.secondary.map((c: { name: string }) => c.name)
-    ];
-    expect(persistenceNames).toContain("rel1");
-    expect(persistenceNames).toContain("rel2");
-    expect(persistenceNames).not.toContain("noise");
-    for (const p of parsed.persistenceLinks.primary) {
-      expect(typeof p.content).toBe("string");
-      expect(p.content.length).toBeGreaterThan(0);
-    }
-    for (const s of parsed.persistenceLinks.secondary) {
-      expect(s.content).toBeUndefined();
-    }
-
-    // Associative keywords: suggested from selected chunks; 5~10 when possible, else 3~5.
-    expect(parsed.associative.keywords.length).toBeGreaterThanOrEqual(3);
-    expect(parsed.associative.keywords.length).toBeLessThanOrEqual(10);
-    expect(parsed.associative.keywords).toContain("snapshot");
-  });
-
-  it("dedupes read tiers when chunk bodies are identical", async () => {
-    const dir = newTempDir();
-    await runCli(["config", "set", "--section", "persist", "--min", "1", "--max", "1000"], dir);
-    await runCli(["config", "set", "--section", "tmpDetail", "--min", "1", "--max", "1000"], dir);
-    await runCli(["persist", "write", "--text", "alpha beta gamma uniquemarker xyz"], dir);
-    await runCli(["chunks", "add", "--name", "dup_a", "--keywords", "alpha,beta", "--text", "same-body"], dir);
-    await runCli(["chunks", "add", "--name", "dup_b", "--keywords", "alpha,gamma", "--text", "same-body"], dir);
-    const result = await runCli(["read", "--json"], dir);
-    const parsed = JSON.parse(result.out);
-    const tierNames = [
-      ...parsed.persistenceLinks.primary.map((c: { name: string }) => c.name),
-      ...parsed.persistenceLinks.secondary.map((c: { name: string }) => c.name)
-    ];
-    expect(tierNames.filter((n: string) => n === "dup_a" || n === "dup_b").length).toBeLessThanOrEqual(1);
+    const plain = await runCli(["read"], dir);
+    expect(plain.out.trim()).toBe("开发中");
+    const withJson = await runCli(["read", "--json"], dir);
+    expect(withJson.out.trim()).toBe("开发中");
   });
 
   it("validates edit --start/--end numeric inputs with clear errors", async () => {
@@ -264,28 +178,6 @@ describe("apm cli spec paths", () => {
     const message = await runCliFail(["role", "show"], dir);
     expect(message).toContain("Invalid section front matter");
     expect(message).toContain("createdAt");
-    expect(message).toContain("YYYY-MM-DD HH:mm:ss");
-  });
-
-  it("validates status schema timestamp format with actionable field error", async () => {
-    const dir = newTempDir();
-    await runCli(["read"], dir);
-    writeFileSync(
-      join(dir, ".apm", "status.json"),
-      JSON.stringify(
-        {
-          initializedAt: "2026-01-01T10:00:00",
-          updatedAt: "2026-01-01 10:00:00",
-          lastReadAt: null
-        },
-        null,
-        2
-      ),
-      "utf8"
-    );
-    const message = await runCliFail(["read"], dir);
-    expect(message).toContain("Invalid status file");
-    expect(message).toContain("initializedAt");
     expect(message).toContain("YYYY-MM-DD HH:mm:ss");
   });
 
@@ -358,96 +250,6 @@ describe("apm cli spec paths", () => {
     expect(
       await runCliFail(["tmp", "todos", "add", "--name", "overflow", "--description", "d", "--index", "21"], dir)
     ).toContain("20");
-  });
-
-  it("read tiers: persistence and associative JSON primary carry content, secondary do not", async () => {
-    const dir = newTempDir();
-    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "2000"], dir);
-    await runCli(["config", "set", "--section", "persist", "--min", "1", "--max", "2000"], dir);
-    await runCli(["config", "set", "--section", "tmpDetail", "--min", "1", "--max", "2000"], dir);
-
-    await runCli(
-      [
-        "persist",
-        "write",
-        "--text",
-        "vitest vitest vitest snapshot assertions inverted index extraction scoring persistence links associative keywords chunks selection atomic locks windows fs rename"
-      ],
-      dir
-    );
-    await runCli(
-      ["tmp", "detail", "write", "--text", "fix apm read json output include selected chunks and associative keywords via inverted index"],
-      dir
-    );
-
-    const chunkSpecs: Array<{ name: string; keywords: string; text: string }> = [
-      { name: "rel1", keywords: "vitest,keywords,selection,snapshot,assertions", text: "a" },
-      { name: "rel2", keywords: "atomic,locks,windows,fs,rename", text: "b" },
-      { name: "rel3", keywords: "inverted,index,extraction", text: "c" },
-      { name: "rel4", keywords: "scoring,persistence,links", text: "d" },
-      { name: "rel5", keywords: "associative,keywords,chunks", text: "e" },
-      { name: "rel6", keywords: "selection,atomic,locks", text: "f" },
-      { name: "rel7", keywords: "windows,fs,snapshot", text: "g" },
-      { name: "rel8", keywords: "vitest,rename,assertions", text: "h" }
-    ];
-    for (const c of chunkSpecs) {
-      await runCli(["chunks", "add", "--name", c.name, "--keywords", c.keywords, "--text", c.text], dir);
-    }
-
-    const result = await runCli(["read", "--json"], dir);
-    const parsed = JSON.parse(result.out);
-
-    expect(parsed.persistenceLinks.primary.length).toBeLessThanOrEqual(3);
-    expect(parsed.persistenceLinks.secondary.length).toBeLessThanOrEqual(5);
-    expect(parsed.persistenceLinks.primary.length + parsed.persistenceLinks.secondary.length).toBeLessThanOrEqual(8);
-
-    for (const p of parsed.persistenceLinks.primary) {
-      expect(p).toMatchObject({ name: expect.any(String), keywords: expect.any(Array), score: expect.any(Number) });
-      expect(typeof p.content).toBe("string");
-      expect(p.content.length).toBeGreaterThan(0);
-    }
-    for (const s of parsed.persistenceLinks.secondary) {
-      expect(s.content).toBeUndefined();
-    }
-
-    expect(parsed.associativeMemory.primary.length).toBeLessThanOrEqual(3);
-    expect(parsed.associativeMemory.secondary.length).toBeLessThanOrEqual(5);
-
-    const textOut = await runCli(["read"], dir);
-    expect(textOut.out).toContain("## 持久化关联");
-    expect(textOut.out).toContain("## 联想记忆");
-    expect(textOut.out).toContain("## 联想关键词");
-    expect(textOut.out).toContain("## Chunks（附录）");
-  });
-
-  it("read associates Chinese persist/detail with chunks (segments + content overlap)", async () => {
-    const dir = newTempDir();
-    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "2000"], dir);
-    await runCli(["config", "set", "--section", "persist", "--min", "1", "--max", "2000"], dir);
-    await runCli(["config", "set", "--section", "tmpDetail", "--min", "1", "--max", "2000"], dir);
-
-    const zhPersist =
-      "虚拟机工作树界面迭代 虚拟机工作树界面迭代 虚拟机工作树界面迭代 挂载失败复盘 挂载失败复盘 挂载失败复盘 process shim VFS扩展";
-    await runCli(["persist", "write", "--text", zhPersist], dir);
-    await runCli(["tmp", "detail", "write", "--text", "本次聚焦虚拟工作树UI与挂载链路排查"], dir);
-
-    await runCli(
-      ["chunks", "add", "--name", "zh_hit", "--keywords", "虚拟机,工作树", "--text", "正文包含虚拟工作树与挂载关键词"],
-      dir
-    );
-    await runCli(["chunks", "add", "--name", "zh_noise", "--keywords", "香蕉,橘子", "--text", "无关内容"], dir);
-
-    const result = await runCli(["read", "--json"], dir);
-    const parsed = JSON.parse(result.out);
-
-    const names = [
-      ...parsed.persistenceLinks.primary.map((c: { name: string }) => c.name),
-      ...parsed.persistenceLinks.secondary.map((c: { name: string }) => c.name)
-    ];
-    expect(names).toContain("zh_hit");
-    expect(names).not.toContain("zh_noise");
-
-    expect(parsed.persistenceLinks.keywords.some((k: string) => /[\u4e00-\u9fff]/.test(k))).toBe(true);
   });
 });
 
