@@ -1,3 +1,4 @@
+/** `read --json` mirrors `renderReadText` tiers for scripted agents (stable field names per iteration docs). */
 import type { Command } from "commander";
 import { ensureApm } from "../../storage/paths";
 import { nowLocal } from "../../core/time";
@@ -22,7 +23,14 @@ export function registerRead(program: Command): void {
       const todos = listTodos(cwd);
       const chunks = listChunks(cwd);
       const task = currentTask(todos);
-      const associations = buildReadAssociations({ persistText: persist, detailText: detail, todos, chunks });
+      const currentTaskText = task ? `${task.name}: ${task.description}` : "";
+      const associations = buildReadAssociations({
+        persistText: persist,
+        detailText: detail,
+        currentTaskText,
+        todos,
+        chunks
+      });
 
       const payload = {
         lastTime: readStatus(cwd).lastReadAt,
@@ -31,7 +39,30 @@ export function registerRead(program: Command): void {
         persist,
         persistenceLinks: {
           keywords: associations.persistenceKeywords,
-          chunks: associations.selectedChunks.map((c) => ({ name: c.name, keywords: c.keywords, score: c.score }))
+          primary: associations.persistencePrimary.map((c) => ({
+            name: c.name,
+            keywords: c.keywords,
+            score: c.score,
+            content: c.content
+          })),
+          secondary: associations.persistenceSecondary.map((c) => ({
+            name: c.name,
+            keywords: c.keywords,
+            score: c.score
+          }))
+        },
+        associativeMemory: {
+          primary: associations.associativePrimary.map((c) => ({
+            name: c.name,
+            keywords: c.keywords,
+            score: c.score,
+            content: c.content
+          })),
+          secondary: associations.associativeSecondary.map((c) => ({
+            name: c.name,
+            keywords: c.keywords,
+            score: c.score
+          }))
         },
         associative: {
           keywords: associations.associativeKeywords

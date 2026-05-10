@@ -1,33 +1,35 @@
+/**
+ * Scores chunks against inverted-index style query terms for two independent read contexts:
+ * persistence (persist-heavy) vs associative memory (detail + current task, lighter persist).
+ * Keeps ranking deterministic without NLP dependencies.
+ */
 import type { ChunkDoc } from "./chunks-service";
 import type { TodoDoc } from "./todos-service";
 
-export type ReadAssociationChunk = {
+export type ReadTierPrimary = {
+  name: string;
+  keywords: string[];
+  score: number;
+  content: string;
+};
+
+export type ReadTierSecondary = {
   name: string;
   keywords: string[];
   score: number;
 };
 
 export type ReadAssociations = {
-  /**
-   * Keywords extracted from persisted + current working context (persist/detail/(optional) todos).
-   *
-   * Design intent:
-   * - Do NOT echo chunk keywords directly; treat chunks as a corpus we can match against.
-   * - Use an inverted-index style extraction over the "query text" (persist/detail/todos),
-   *   then score chunks by overlap against that query-keyword set.
-   */
   persistenceKeywords: string[];
-  selectedChunks: ReadAssociationChunk[];
-  /**
-   * Extra keywords suggested from the selected chunks (excluding persistenceKeywords), ranked by
-   * frequency and chunk relevance. These are for "associative jumps" to nearby concepts.
-   */
+  persistencePrimary: ReadTierPrimary[];
+  persistenceSecondary: ReadTierSecondary[];
+  associativePrimary: ReadTierPrimary[];
+  associativeSecondary: ReadTierSecondary[];
   associativeKeywords: string[];
 };
 
 const STOPWORDS = new Set(
   [
-    // English
     "a",
     "an",
     "the",
@@ -83,7 +85,6 @@ const STOPWORDS = new Set(
     "may",
     "might",
     "must",
-    // APM / generic
     "apm",
     "cli",
     "read",
@@ -103,79 +104,82 @@ function tokenize(text: string): string[] {
     .filter((t) => !STOPWORDS.has(t));
 }
 
+function addWeightedTokens(termScore: Map<string, number>, text: string, weight: number): void {
+  if (!text) return;
+  const tokens = tokenize(text);
+  const tf = new Map<string, number>();
+  for (const t of tokens) tf.set(t, (tf.get(t) ?? 0) + 1);
+  for (const [t, c] of tf) {
+    const score = weight * Math.log1p(c);
+    termScore.set(t, (termScore.get(t) ?? 0) + score);
+  }
+}
+
 function clampKeywordCount(candidates: string[], opts: { min: number; max: number }): string[] {
   if (candidates.length === 0) return [];
   if (candidates.length <= opts.max) {
-    // If we can't reach min, return what we have (caller decides if that's acceptable).
     return candidates;
   }
   return candidates.slice(0, opts.max);
 }
 
-export function buildReadAssociations(input: {
-  persistText: string;
-  detailText: string;
-  todos: TodoDoc[];
-  chunks: ChunkDoc[];
-}): ReadAssociations {
-  const { persistText, detailText, todos, chunks } = input;
-
-  // Inverted-index style extraction: build a term -> weighted tf score map from the "query sources".
-  // We keep it deterministic and local (no external model calls).
-  const termScore = new Map<string, number>();
-  function addText(text: string, weight: number): void {
-    if (!text) return;
-    const tokens = tokenize(text);
-    const tf = new Map<string, number>();
-    for (const t of tokens) tf.set(t, (tf.get(t) ?? 0) + 1);
-    for (const [t, c] of tf) {
-      const score = weight * Math.log1p(c);
-      termScore.set(t, (termScore.get(t) ?? 0) + score);
-    }
+function scoreChunkAgainstTerms(chunk: ChunkDoc, queryWeight: Map<string, number>): number {
+  let score = 0;
+  for (const kw of chunk.keywords) {
+    const t = kw.toLowerCase().trim();
+    const w = queryWeight.get(t);
+    if (w) score += w;
   }
+  return score;
+}
 
-  addText(persistText, 2.0);
-  addText(detailText, 1.5);
-  // Optional source: current todos can provide a small hint of "what's active now".
-  addText(
-    todos
-      .filter((t) => !t.completed)
-      .map((t) => `${t.name} ${t.description}`)
-      .join("\n"),
-    1.0
-  );
+function rankChunks(chunks: ChunkDoc[], queryWeight: Map<string, number>): ChunkDoc[] {
+  return chunks
+    .map((c) => ({ c, s: scoreChunkAgainstTerms(c, queryWeight) }))
+    .filter((x) => x.s > 0)
+    .sort((a, b) => b.s - a.s || a.c.name.localeCompare(b.c.name))
+    .map((x) => x.c);
+}
 
+const TIER_TOP_N = 8;
+const PRIMARY_COUNT = 3;
+
+function splitTiers(
+  ranked: ChunkDoc[],
+  scoreFn: (c: ChunkDoc) => number
+): { primary: ReadTierPrimary[]; secondary: ReadTierSecondary[] } {
+  const top = ranked.slice(0, TIER_TOP_N);
+  const primaryDocs = top.slice(0, PRIMARY_COUNT);
+  const secondaryDocs = top.slice(PRIMARY_COUNT);
+  return {
+    primary: primaryDocs.map((c) => ({
+      name: c.name,
+      keywords: c.keywords,
+      score: scoreFn(c),
+      content: c.content
+    })),
+    secondary: secondaryDocs.map((c) => ({
+      name: c.name,
+      keywords: c.keywords,
+      score: scoreFn(c)
+    }))
+  };
+}
+
+function buildPersistenceKeywords(termScore: Map<string, number>): string[] {
   const persistenceRanked = [...termScore.entries()]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .map(([t]) => t);
+  return clampKeywordCount(persistenceRanked, { min: 5, max: 10 }).slice(0, 10);
+}
 
-  const persistenceKeywords = clampKeywordCount(persistenceRanked, { min: 5, max: 10 }).slice(0, 10);
-
-  const queryWeight = new Map<string, number>();
-  for (const [t, s] of termScore) queryWeight.set(t, s);
-
-  function scoreChunk(chunk: ChunkDoc): number {
-    let score = 0;
-    for (const kw of chunk.keywords) {
-      const t = kw.toLowerCase().trim();
-      const w = queryWeight.get(t);
-      if (w) score += w;
-    }
-    return score;
-  }
-
-  const scoredChunks: ReadAssociationChunk[] = chunks
-    .map((c) => ({ name: c.name, keywords: c.keywords, score: scoreChunk(c) }))
-    .filter((c) => c.score > 0)
-    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
-
-  const selectedChunks = scoredChunks.slice(0, 5); // 3~5 max; may be fewer.
-
-  // Associative keywords: derive from selected chunks keywords (excluding persistence keywords),
-  // weighted by chunk score (so keywords from the most relevant chunks rank higher).
+function buildAssociativeKeywords(
+  persistenceKeywords: string[],
+  tierChunks: Array<{ keywords: string[]; score: number }>
+): string[] {
   const persistenceSet = new Set(persistenceKeywords.map((k) => k.toLowerCase()));
   const assocScore = new Map<string, number>();
-  for (const c of selectedChunks) {
+  for (const c of tierChunks) {
     const weight = Math.max(1, c.score);
     for (const kw of c.keywords) {
       const t = kw.toLowerCase().trim();
@@ -188,14 +192,65 @@ export function buildReadAssociations(input: {
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .map(([t]) => t);
 
-  // Count constraints:
-  // - Prefer 5~10 when possible.
-  // - If corpus is too small, allow 3~5 (or fewer if <3 exist).
-  const associativeKeywords =
-    associativeRanked.length >= 5
-      ? clampKeywordCount(associativeRanked, { min: 5, max: 10 }).slice(0, 10)
-      : associativeRanked.slice(0, Math.min(5, associativeRanked.length));
-
-  return { persistenceKeywords, selectedChunks, associativeKeywords };
+  return associativeRanked.length >= 5
+    ? clampKeywordCount(associativeRanked, { min: 5, max: 10 }).slice(0, 10)
+    : associativeRanked.slice(0, Math.min(5, associativeRanked.length));
 }
 
+export function buildReadAssociations(input: {
+  persistText: string;
+  detailText: string;
+  currentTaskText: string;
+  todos: TodoDoc[];
+  chunks: ChunkDoc[];
+}): ReadAssociations {
+  const { persistText, detailText, currentTaskText, todos, chunks } = input;
+
+  const persistenceTerms = new Map<string, number>();
+  addWeightedTokens(persistenceTerms, persistText, 2.0);
+  addWeightedTokens(persistenceTerms, detailText, 1.5);
+  addWeightedTokens(
+    persistenceTerms,
+    todos
+      .filter((t) => !t.completed)
+      .map((t) => `${t.name} ${t.description}`)
+      .join("\n"),
+    1.0
+  );
+
+  const persistenceKeywords = buildPersistenceKeywords(persistenceTerms);
+
+  const persistenceRanked = rankChunks(chunks, persistenceTerms);
+  const persistenceScorer = (c: ChunkDoc) => scoreChunkAgainstTerms(c, persistenceTerms);
+  const { primary: persistencePrimary, secondary: persistenceSecondary } = splitTiers(
+    persistenceRanked,
+    persistenceScorer
+  );
+
+  /** Associative query: emphasize working memory + task; persist contributes but less than in persistence queue. */
+  const associativeTerms = new Map<string, number>();
+  addWeightedTokens(associativeTerms, persistText, 1.0);
+  addWeightedTokens(associativeTerms, detailText, 2.5);
+  addWeightedTokens(associativeTerms, currentTaskText, 2.0);
+
+  const associativeRanked = rankChunks(chunks, associativeTerms);
+  const associativeScorer = (c: ChunkDoc) => scoreChunkAgainstTerms(c, associativeTerms);
+  const { primary: associativePrimary, secondary: associativeSecondary } = splitTiers(
+    associativeRanked,
+    associativeScorer
+  );
+
+  const associativeKeywords = buildAssociativeKeywords(persistenceKeywords, [
+    ...associativePrimary,
+    ...associativeSecondary
+  ]);
+
+  return {
+    persistenceKeywords,
+    persistencePrimary,
+    persistenceSecondary,
+    associativePrimary,
+    associativeSecondary,
+    associativeKeywords
+  };
+}

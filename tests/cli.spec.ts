@@ -147,7 +147,10 @@ describe("apm cli spec paths", () => {
     expect(parsed.currentTask).toContain("todoA");
     expect(Array.isArray(parsed.chunks)).toBe(true);
     expect(Array.isArray(parsed.persistenceLinks?.keywords)).toBe(true);
-    expect(Array.isArray(parsed.persistenceLinks?.chunks)).toBe(true);
+    expect(Array.isArray(parsed.persistenceLinks?.primary)).toBe(true);
+    expect(Array.isArray(parsed.persistenceLinks?.secondary)).toBe(true);
+    expect(Array.isArray(parsed.associativeMemory?.primary)).toBe(true);
+    expect(Array.isArray(parsed.associativeMemory?.secondary)).toBe(true);
     expect(Array.isArray(parsed.associative?.keywords)).toBe(true);
   });
 
@@ -183,12 +186,23 @@ describe("apm cli spec paths", () => {
     expect(parsed.persistenceLinks.keywords.length).toBeLessThanOrEqual(10);
     expect(parsed.persistenceLinks.keywords).toContain("vitest");
 
-    // Selected chunks: max 5, ranked by overlap with extracted keywords.
-    expect(parsed.persistenceLinks.chunks.length).toBeLessThanOrEqual(5);
-    const selectedNames = parsed.persistenceLinks.chunks.map((c: { name: string }) => c.name);
-    expect(selectedNames).toContain("rel1");
-    expect(selectedNames).toContain("rel2");
-    expect(selectedNames).not.toContain("noise");
+    // Persistence tiers: primary ≤3 full content, secondary ≤5 meta-only; combined top-8 cap.
+    expect(parsed.persistenceLinks.primary.length).toBeLessThanOrEqual(3);
+    expect(parsed.persistenceLinks.secondary.length).toBeLessThanOrEqual(5);
+    const persistenceNames = [
+      ...parsed.persistenceLinks.primary.map((c: { name: string }) => c.name),
+      ...parsed.persistenceLinks.secondary.map((c: { name: string }) => c.name)
+    ];
+    expect(persistenceNames).toContain("rel1");
+    expect(persistenceNames).toContain("rel2");
+    expect(persistenceNames).not.toContain("noise");
+    for (const p of parsed.persistenceLinks.primary) {
+      expect(typeof p.content).toBe("string");
+      expect(p.content.length).toBeGreaterThan(0);
+    }
+    for (const s of parsed.persistenceLinks.secondary) {
+      expect(s.content).toBeUndefined();
+    }
 
     // Associative keywords: suggested from selected chunks; 5~10 when possible, else 3~5.
     expect(parsed.associative.keywords.length).toBeGreaterThanOrEqual(3);
@@ -303,6 +317,91 @@ describe("apm cli spec paths", () => {
     expect(message).toContain("Invalid chunk front matter");
     expect(message).toContain("createdAt");
     expect(message).toContain("YYYY-MM-DD HH:mm:ss");
+  });
+
+  it("rejects chunk text over 200 chars (countChars)", async () => {
+    const dir = newTempDir();
+    const ok200 = "x".repeat(200);
+    await runCli(["chunks", "add", "--name", "c200", "--keywords", "k", "--text", ok200], dir);
+    const bad201 = "y".repeat(201);
+    expect(await runCliFail(["chunks", "add", "--name", "c201", "--keywords", "k", "--text", bad201], dir)).toContain(
+      "200"
+    );
+    await runCli(["chunks", "add", "--name", "cedit", "--keywords", "k", "--text", "hi"], dir);
+    expect(await runCliFail(["chunks", "edit", "--name", "cedit", "--text", bad201], dir)).toContain("200");
+  });
+
+  it("rejects tmp todos add when 20 todos already exist", async () => {
+    const dir = newTempDir();
+    for (let i = 1; i <= 20; i++) {
+      await runCli(
+        ["tmp", "todos", "add", "--name", `t${i}`, "--description", "d", "--index", String(i)],
+        dir
+      );
+    }
+    expect(
+      await runCliFail(["tmp", "todos", "add", "--name", "overflow", "--description", "d", "--index", "21"], dir)
+    ).toContain("20");
+  });
+
+  it("read tiers: persistence and associative JSON primary carry content, secondary do not", async () => {
+    const dir = newTempDir();
+    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "2000"], dir);
+    await runCli(["config", "set", "--section", "persist", "--min", "1", "--max", "2000"], dir);
+    await runCli(["config", "set", "--section", "tmpDetail", "--min", "1", "--max", "2000"], dir);
+
+    await runCli(
+      [
+        "persist",
+        "write",
+        "--text",
+        "vitest vitest vitest snapshot assertions inverted index extraction scoring persistence links associative keywords chunks selection atomic locks windows fs rename"
+      ],
+      dir
+    );
+    await runCli(
+      ["tmp", "detail", "write", "--text", "fix apm read json output include selected chunks and associative keywords via inverted index"],
+      dir
+    );
+
+    const chunkSpecs: Array<{ name: string; keywords: string; text: string }> = [
+      { name: "rel1", keywords: "vitest,keywords,selection,snapshot,assertions", text: "a" },
+      { name: "rel2", keywords: "atomic,locks,windows,fs,rename", text: "b" },
+      { name: "rel3", keywords: "inverted,index,extraction", text: "c" },
+      { name: "rel4", keywords: "scoring,persistence,links", text: "d" },
+      { name: "rel5", keywords: "associative,keywords,chunks", text: "e" },
+      { name: "rel6", keywords: "selection,atomic,locks", text: "f" },
+      { name: "rel7", keywords: "windows,fs,snapshot", text: "g" },
+      { name: "rel8", keywords: "vitest,rename,assertions", text: "h" }
+    ];
+    for (const c of chunkSpecs) {
+      await runCli(["chunks", "add", "--name", c.name, "--keywords", c.keywords, "--text", c.text], dir);
+    }
+
+    const result = await runCli(["read", "--json"], dir);
+    const parsed = JSON.parse(result.out);
+
+    expect(parsed.persistenceLinks.primary.length).toBeLessThanOrEqual(3);
+    expect(parsed.persistenceLinks.secondary.length).toBeLessThanOrEqual(5);
+    expect(parsed.persistenceLinks.primary.length + parsed.persistenceLinks.secondary.length).toBeLessThanOrEqual(8);
+
+    for (const p of parsed.persistenceLinks.primary) {
+      expect(p).toMatchObject({ name: expect.any(String), keywords: expect.any(Array), score: expect.any(Number) });
+      expect(typeof p.content).toBe("string");
+      expect(p.content.length).toBeGreaterThan(0);
+    }
+    for (const s of parsed.persistenceLinks.secondary) {
+      expect(s.content).toBeUndefined();
+    }
+
+    expect(parsed.associativeMemory.primary.length).toBeLessThanOrEqual(3);
+    expect(parsed.associativeMemory.secondary.length).toBeLessThanOrEqual(5);
+
+    const textOut = await runCli(["read"], dir);
+    expect(textOut.out).toContain("## 持久化关联");
+    expect(textOut.out).toContain("## 联想记忆");
+    expect(textOut.out).toContain("## 联想关键词");
+    expect(textOut.out).toContain("## Chunks（附录）");
   });
 });
 

@@ -1,3 +1,4 @@
+/** Tmp todos remain bounded so open work stays scannable in read snapshots. */
 import type { Command } from "commander";
 import { ensureApm } from "../../storage/paths";
 import { registerSectionCommands } from "./section";
@@ -59,6 +60,9 @@ export function registerTmp(program: Command): void {
       ensureApm(cwd);
       assertSafeName(opts.name);
       const all = listTodos(cwd);
+      if (all.length >= 20) {
+        throw new Error("Todo limit reached (20). Merge, remove, or archive tasks before adding.");
+      }
       const index = parsePositiveInt("--index", opts.index);
       const priority = parsePositiveInt("--priority", opts.priority);
       if (all.some((t) => t.name === opts.name)) throw new Error(`Todo name exists: ${opts.name}`);

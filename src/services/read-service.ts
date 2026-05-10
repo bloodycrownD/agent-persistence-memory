@@ -1,3 +1,6 @@
+/**
+ * Human-readable read snapshot: mirrors JSON tiers so agents see the same primary/secondary split as `--json`.
+ */
 import type { TodoDoc } from "./todos-service";
 import type { ChunkDoc } from "./chunks-service";
 import type { ReadAssociations } from "./read-associations";
@@ -6,6 +9,75 @@ export function currentTask(todos: TodoDoc[]): TodoDoc | null {
   const open = todos.filter((t) => !t.completed);
   if (open.length === 0) return null;
   return open.sort((a, b) => a.priority - b.priority || a.index - b.index)[0];
+}
+
+function renderTierSections(associations: ReadAssociations): string[] {
+  const lines: string[] = [];
+
+  lines.push(
+    "## 持久化关联",
+    associations.persistenceKeywords.length === 0
+      ? "(empty)"
+      : [
+          `Keywords: ${associations.persistenceKeywords.join(", ")}`,
+          "",
+          "### Primary",
+          associations.persistencePrimary.length === 0
+            ? "(empty)"
+            : associations.persistencePrimary
+                .map((c) =>
+                  [
+                    `#### ${c.name}`,
+                    `keywords: ${c.keywords.join(", ")}`,
+                    `score: ${c.score}`,
+                    "",
+                    c.content
+                  ].join("\n")
+                )
+                .join("\n\n"),
+          "",
+          "### Secondary",
+          associations.persistenceSecondary.length === 0
+            ? "(empty)"
+            : associations.persistenceSecondary
+                .map((c) => `- ${c.name} (${c.keywords.join(", ")}) — score: ${c.score}`)
+                .join("\n")
+        ].join("\n")
+  );
+
+  lines.push(
+    "",
+    "## 联想记忆",
+    associations.associativePrimary.length === 0 && associations.associativeSecondary.length === 0
+      ? "(empty)"
+      : [
+          "### Primary",
+          associations.associativePrimary.length === 0
+            ? "(empty)"
+            : associations.associativePrimary
+                .map((c) =>
+                  [
+                    `#### ${c.name}`,
+                    `keywords: ${c.keywords.join(", ")}`,
+                    `score: ${c.score}`,
+                    "",
+                    c.content
+                  ].join("\n")
+                )
+                .join("\n\n"),
+          "",
+          "### Secondary",
+          associations.associativeSecondary.length === 0
+            ? "(empty)"
+            : associations.associativeSecondary
+                .map((c) => `- ${c.name} (${c.keywords.join(", ")}) — score: ${c.score}`)
+                .join("\n")
+        ].join("\n")
+  );
+
+  lines.push("", "## 联想关键词", associations.associativeKeywords.length === 0 ? "(empty)" : associations.associativeKeywords.join(", "));
+
+  return lines;
 }
 
 export function renderReadText(payload: {
@@ -31,19 +103,7 @@ export function renderReadText(payload: {
     "## Persist",
     persist || "(empty)",
     "",
-    "## 持久化关联",
-    associations.persistenceKeywords.length === 0
-      ? "(empty)"
-      : [
-          `Keywords: ${associations.persistenceKeywords.join(", ")}`,
-          "",
-          associations.selectedChunks.length === 0
-            ? "Chunks: (empty)"
-            : ["Chunks:", ...associations.selectedChunks.map((c) => `- ${c.name} (${c.keywords.join(", ")})`)].join("\n")
-        ].join("\n"),
-    "",
-    "## 联想关键词",
-    associations.associativeKeywords.length === 0 ? "(empty)" : associations.associativeKeywords.join(", "),
+    ...renderTierSections(associations),
     "",
     "## Current Task",
     currentTask || "(none)",
@@ -60,8 +120,7 @@ export function renderReadText(payload: {
     "## Detail",
     detail || "(empty)",
     "",
-    "## Chunks",
+    "## Chunks（附录）",
     chunks.length === 0 ? "(empty)" : chunks.map((c) => `- ${c.name} (${c.keywords.join(", ")})`).join("\n")
   ].join("\n");
 }
-
