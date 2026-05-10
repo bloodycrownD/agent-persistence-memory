@@ -5,7 +5,7 @@ import { registerSectionCommands } from "./section";
 import { toLineNumbered } from "../../formatters/line-number";
 import { table } from "../../formatters/table";
 import { assertSafeName } from "../../core/name-sanitize";
-import { countChars, parsePositiveInt } from "../../core/validate";
+import { parsePositiveInt } from "../../core/validate";
 import { nowLocal } from "../../core/time";
 import { readSectionContent } from "../../services/sections-service";
 import { clearTodos, listTodos, renameTodo, rmTodoByName, writeTodo } from "../../services/todos-service";
@@ -67,10 +67,6 @@ export function registerTmp(program: Command): void {
       const priority = parsePositiveInt("--priority", opts.priority);
       if (all.some((t) => t.name === opts.name)) throw new Error(`Todo name exists: ${opts.name}`);
       if (all.some((t) => t.index === index)) throw new Error(`Todo index exists: ${index}`);
-      if (!opts.description.trim()) throw new Error("Todo description is required.");
-      if (countChars(`${opts.name}${opts.description}`) > 100) {
-        throw new Error("Todo name + description must be <= 100 chars.");
-      }
       const now = nowLocal();
       await writeTodo(cwd, {
         name: opts.name,
@@ -116,10 +112,6 @@ export function registerTmp(program: Command): void {
         throw new Error(`Todo name exists: ${nextName}`);
       }
       const nextDescription = opts.description ?? current.description;
-      if (!nextDescription.trim()) throw new Error("Todo description is required.");
-      if (countChars(`${nextName}${nextDescription}`) > 100) {
-        throw new Error("Todo name + description must be <= 100 chars.");
-      }
 
       await renameTodo(cwd, current.name, {
         ...current,

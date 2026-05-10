@@ -3,9 +3,8 @@ import type { Command } from "commander";
 import { ensureApm } from "../../storage/paths";
 import { assertSafeName } from "../../core/name-sanitize";
 import { nowLocal } from "../../core/time";
-import { countChars, parsePositiveInt } from "../../core/validate";
+import { parsePositiveInt } from "../../core/validate";
 import { table } from "../../formatters/table";
-import { renderFrontMatter } from "../../storage/markdown";
 import { listChunks, rmChunk, type ChunkDoc, writeChunk, renameChunk } from "../../services/chunks-service";
 
 type MatchMode = "contains" | "exact" | "prefix";
@@ -25,9 +24,6 @@ export function registerChunks(program: Command): void {
       ensureApm(cwd);
       assertSafeName(opts.name);
       if (listChunks(cwd).some((c) => c.name === opts.name)) throw new Error(`Chunk name exists: ${opts.name}`);
-      if (countChars(opts.text) > 200) {
-        throw new Error("Chunk text must be <= 200 characters (countChars).");
-      }
       const now = nowLocal();
       await writeChunk(cwd, {
         name: opts.name,
@@ -63,9 +59,6 @@ export function registerChunks(program: Command): void {
       const nextName = opts.newName ?? current.name;
       assertSafeName(nextName);
       const nextContent = opts.text ?? current.content;
-      if (opts.text !== undefined && countChars(nextContent) > 200) {
-        throw new Error("Chunk text must be <= 200 characters (countChars).");
-      }
       const next: ChunkDoc = {
         ...current,
         name: nextName,
@@ -80,16 +73,7 @@ export function registerChunks(program: Command): void {
         return;
       }
 
-      const payload = renderFrontMatter(
-        {
-          name: next.name,
-          keywords: next.keywords,
-          createdAt: next.createdAt,
-          updatedAt: next.updatedAt
-        },
-        next.content
-      );
-      await renameChunk(cwd, current.name, next.name, payload);
+      await renameChunk(cwd, current.name, next);
       console.log("OK");
     });
 
