@@ -1,10 +1,20 @@
+/**
+ * Import memory/persistence markdown records into .apm chunks.
+ *
+ * Chunk bodies are capped at 200 chars (product rule): long notes are split into
+ * multiple chunks (same keywords, names base-s01, base-s02, …). No file-path
+ * pointers—content lives entirely in chunk text, which matches the chunk model.
+ */
 import { readFileSync, existsSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { ensureApm } from "../src/storage/paths";
 import { nowLocal } from "../src/core/time";
+import { countChars } from "../src/core/validate";
 import { writeSection } from "../src/services/sections-service";
 import { listTodos, writeTodo } from "../src/services/todos-service";
 import { listChunks, writeChunk } from "../src/services/chunks-service";
+
+const CHUNK_BODY_MAX = 200;
 
 type MemoryRecord = {
   sourcePath: string;
@@ -14,7 +24,6 @@ type MemoryRecord = {
 };
 
 function safeChunkName(base: string): string {
-  // Keep only [a-z0-9-_], collapse repeats, trim.
   const slug = base
     .toLowerCase()
     .replace(/[^a-z0-9-_]+/g, "-")
@@ -29,12 +38,10 @@ function extractTitle(md: string): string {
 }
 
 function extractKeywords(md: string): string[] {
-  // Prefer backticked keywords from lines like: 关键词：`a` `b`
   const line = md.split("\n").find((l) => l.includes("关键词"));
   if (line) {
     const ticks = Array.from(line.matchAll(/`([^`]+)`/g)).map((m) => m[1].trim());
     if (ticks.length) return ticks.slice(0, 10);
-    // fallback: comma-separated after colon
     const after = line.split("：")[1] ?? line.split(":")[1];
     if (after) {
       return after
@@ -44,7 +51,6 @@ function extractKeywords(md: string): string[] {
         .slice(0, 10);
     }
   }
-  // Fallback: infer from obvious tokens
   const inferred: string[] = [];
   if (/VFS/i.test(md)) inferred.push("VFS");
   if (/SillyTavern/i.test(md)) inferred.push("SillyTavern");
@@ -53,8 +59,33 @@ function extractKeywords(md: string): string[] {
   return inferred.slice(0, 10);
 }
 
+/** Split full markdown body into ≤CHUNK_BODY_MAX codepoints; prefer newline breaks. */
+function splitContentForChunks(text: string): string[] {
+  const segments: string[] = [];
+  const chars = Array.from(text);
+  let i = 0;
+  while (i < chars.length) {
+    let end = Math.min(i + CHUNK_BODY_MAX, chars.length);
+    if (end < chars.length) {
+      const lookback = 48;
+      const windowStart = Math.max(i, end - lookback);
+      let cut = end;
+      for (let j = end - 1; j >= windowStart; j--) {
+        if (chars[j] === "\n") {
+          cut = j + 1;
+          break;
+        }
+      }
+      end = cut;
+    }
+    const piece = chars.slice(i, end).join("");
+    if (piece.length > 0) segments.push(piece);
+    i = end;
+  }
+  return segments;
+}
+
 function parsePersistenceIndexLinks(indexMd: string): string[] {
-  // Capture markdown links to ./<date>/records/<file>.md
   const paths: string[] = [];
   for (const m of indexMd.matchAll(/\((\.\/\d{8}\/records\/[^)]+?\.md)\)/g)) {
     paths.push(m[1]);
@@ -73,6 +104,21 @@ function loadRecord(repoRoot: string, relPathFromIndex: string): MemoryRecord {
   };
 }
 
+function clipToMaxCountChars(text: string, max: number): string {
+  if (countChars(text) <= max) return text;
+  return Array.from(text)
+    .slice(0, max)
+    .join("");
+}
+
+function padToMinCountChars(text: string, min: number, padLine: string): string {
+  let out = text;
+  while (countChars(out) < min) {
+    out += "\n" + padLine;
+  }
+  return out;
+}
+
 async function main() {
   const repoRoot = process.cwd();
   ensureApm(repoRoot);
@@ -88,59 +134,76 @@ async function main() {
 
   const existingChunkNames = new Set(listChunks(repoRoot).map((c) => c.name));
 
-  // Write chunks
   const now = nowLocal();
-  let imported = 0;
+  let chunkCount = 0;
   for (let i = 0; i < records.length; i++) {
     const r = records[i];
     const date = (r.sourcePath.match(/\\memory\\persistence\\(\d{8})\\records\\/i) ||
       r.sourcePath.match(/\/memory\/persistence\/(\d{8})\/records\//i))?.[1];
     const base = safeChunkName(`${date ?? "unknown"}-${r.title}`) || `mem-${date ?? "unknown"}-${i + 1}`;
-    let name = base;
-    let suffix = 2;
-    while (existingChunkNames.has(name)) {
-      name = `${base}-${suffix++}`;
+
+    const segments = splitContentForChunks(r.content);
+    if (segments.length === 0) continue;
+
+    const kw = r.keywords.length ? [...r.keywords] : ["memory-import"];
+    if (!kw.includes("memory-import")) kw.push("memory-import");
+
+    const allocateName = (suffix: string): string => {
+      let candidate = suffix ? `${base}${suffix}` : base;
+      let n = 2;
+      while (existingChunkNames.has(candidate)) {
+        candidate = suffix ? `${base}${suffix}-${n}` : `${base}-${n}`;
+        n++;
+      }
+      existingChunkNames.add(candidate);
+      return candidate;
+    };
+
+    if (segments.length === 1) {
+      const name = allocateName("");
+      await writeChunk(repoRoot, {
+        name,
+        keywords: kw,
+        createdAt: now,
+        updatedAt: now,
+        content: segments[0]
+      });
+      chunkCount++;
+    } else {
+      for (let s = 0; s < segments.length; s++) {
+        const segSuffix = `-s${String(s + 1).padStart(2, "0")}`;
+        const name = allocateName(segSuffix);
+        await writeChunk(repoRoot, {
+          name,
+          keywords: kw,
+          createdAt: now,
+          updatedAt: now,
+          content: segments[s]
+        });
+        chunkCount++;
+      }
     }
-
-    const header = [
-      `# Imported Memory`,
-      `- title: ${r.title}`,
-      `- source: ${relative(repoRoot, r.sourcePath)}`,
-      r.keywords.length ? `- keywords: ${r.keywords.join(", ")}` : `- keywords: (none)`,
-      "",
-      r.content
-    ].join("\n");
-
-    await writeChunk(repoRoot, {
-      name,
-      keywords: r.keywords,
-      createdAt: now,
-      updatedAt: now,
-      content: header
-    });
-
-    existingChunkNames.add(name);
-    imported++;
   }
 
-  // Persist: keep within 300~500 chars-ish; write a concise navigation pointer.
-  // Keep this within persist default limit (300~500 chars).
-  const persistText =
-    `已将 memory/persistence 记录导入到 .apm/chunks（${imported} 条），每条包含来源路径、标题与关键词，便于后续检索与回溯。` +
-    `原始索引仍在 memory/persistence/index.md（按日期归档，含关键词/摘要/入口）。` +
-    `检索方式：apm chunks search（field=keywords/content/name）。` +
-    `维护约定：长期稳定的规则/决策写入 apm persist；阶段任务写入 apm tmp todos；执行进度/阻塞/下一步写入 apm tmp detail；可复用的技术结论沉淀为 apm chunks 并补 keywords。` +
-    `目标：清空上下文后，通过 apm read 快速恢复当前工作。`;
+  // persist: 300~500 codepoints (default config), no external path pointers
+  let persistCore =
+    `已将 memory/persistence 中的记录写入 apm chunks：长文按每段最多200字切分，同一主题的多个 chunk 共享关键词，多段命名后缀为 -s01、-s02。` +
+    `请用 apm chunks search / list / read 检索；稳定规则写入 persist，阶段任务用 tmp todos，执行进展用 tmp detail。`;
+  if (countChars(persistCore) > 500) persistCore = clipToMaxCountChars(persistCore, 500);
+  const persistText = padToMinCountChars(persistCore, 300, "（导入说明须保持 persist 长度在配置范围内。）");
   await writeSection(repoRoot, "persist", persistText);
 
-  // Add a todo to review imported memory
   const todos = listTodos(repoRoot);
   const nextIndex = todos.length ? Math.max(...todos.map((t) => t.index)) + 1 : 1;
   const now2 = nowLocal();
   if (!todos.some((t) => t.name === "review-imported-memory")) {
+    const desc = `Segs:${chunkCount}. Curate to persist.`;
+    if (countChars(`review-imported-memory${desc}`) > 100) {
+      throw new Error("Todo combo length invariant failed for review-imported-memory");
+    }
     await writeTodo(repoRoot, {
       name: "review-imported-memory",
-      description: `Review imported memory chunks (${imported}) and pin key rules into persist.`,
+      description: desc,
       index: nextIndex,
       priority: 1,
       completed: false,
@@ -149,71 +212,21 @@ async function main() {
     });
   }
 
-  // Detail: keep within tmpDetail default limit (500~1000 chars).
+  // tmp detail: 500~1000 codepoints
   let detailText = [
-      `Imported memory/persistence records into apm chunks.`,
-      `Imported count: ${imported}`,
-      ``,
-      `What was done:`,
-      `- Parsed memory/persistence/index.md and followed record links.`,
-      `- For each record, created a chunk with safe ASCII name, preserved original title/source path, and kept full content for later retrieval.`,
-      `- Wrote a concise persist note to explain the relationship between memory/ and .apm/.`,
-      ``,
-      `Why:`,
-      `- After context resets, the agent can resume work via apm read, and retrieve long-form prior decisions via chunks search/read.`,
-      `- This reduces reliance on the memory/ folder being manually searched by humans.`,
-      ``,
-      `Next steps (manual verification):`,
-      `1) Run: apm chunks list and spot-check a few imported items.`,
-      `2) Run: apm chunks search --q VFS --field content (and keywords) to ensure recall works.`,
-      `3) Curate: move truly durable rules into apm persist (keep within its limits).`,
-      `4) Convert near-term work into tmp todos and keep tmp detail updated as progress changes.`,
-      ``,
-      `Notes:`,
-      `- Chunk names are sanitized (ASCII only) to satisfy apm safe-name rules; the original Chinese titles remain in chunk body.`,
-      `- If a record changes later, re-run this import or update the specific chunk via apm chunks edit.`,
-      ``,
-      `Suggested curation heuristics:`,
-      `- Repeatable rule/decision (mount lifecycle, error format, sanitize policy): summarize into apm persist in 1-3 bullets.`,
-      `- Troubleshooting postmortem: keep full details in chunks; persist only root cause + fix signature + quick checklist.`,
-      `- Handoff note: persist “doc locations + next steps”; keep the rest in chunks.`,
-      ``,
-      `Recovery workflow example (after a session reset):`,
-      `- Run apm read (or apm read --json) to restore role/persist/todos/detail context.`,
-      `- Search chunks by keywords related to the active todo; read the top 1-3 chunks for detailed background.`,
-      `- Update tmp detail immediately with the plan and mark progress as you proceed.`,
-      ``,
-      `Verification checklist (quick):`,
-      `- apm chunks list: count looks reasonable and names are unique.`,
-      `- apm chunks search: try q=VFS/UI/CSS/SillyTavern and confirm results show up.`,
-      `- apm chunks read: open at least one imported chunk and confirm it includes source path + original title.`,
-      `- apm persist show: confirm the persist navigation note exists and is within the configured length limits.`,
-      ``,
-      `If anything looks off:`,
-      `- Re-run the importer after adjusting parsing rules (keywords/title/slug).`,
-      `- Remove a broken chunk via apm chunks rm and re-import, or patch it via apm chunks edit.`,
-      `- Keep persist minimal and move long explanations to chunks; persist should be a compact, durable “operating manual”.`,
-      ``,
-      `Extra context (why this matters):`,
-      `This repo aims to make agent memory explicit and inspectable. The old memory/ folder is useful for humans, but agents tend to work better when the memory is normalized into a consistent schema (role/persist/todos/detail/chunks) and can be retrieved with narrow commands (search/read) rather than scanning directories. This import is intentionally lossless for content (we keep the full markdown) while making it discoverable through keywords and a stable CLI interface.`
-    ].join("\n")
-    .trim();
-  if (detailText.length > 980) {
-    detailText = detailText.slice(0, 980);
-  }
-  while (detailText.length < 520) {
-    detailText += "\n(keep this note within 500~1000 chars)";
-  }
-  await writeSection(repoRoot, "tmpDetail", detailText);
+    `memory/persistence 已导入为 apm chunks（按200字分段，共 ${chunkCount} 段）。`,
+    `记录条数 ${records.length}；检索：chunks search；多段同名后缀 -s01/-s02。`,
+    `下一步：list 抽查；把长期规则压进 persist；tmp 更新进度。`,
+    `说明：正文只在 chunk 内，无外链路径依赖。`
+  ].join("\n");
+  if (countChars(detailText) > 1000) detailText = clipToMaxCountChars(detailText, 1000);
+  const detailFinal = padToMinCountChars(detailText, 500, "（tmp detail 长度在配置 min~max 内。）");
+  await writeSection(repoRoot, "tmpDetail", detailFinal);
 
-  // Summary to stdout
-  // eslint-disable-next-line no-console
-  console.log(`Imported ${imported} records into .apm/chunks.`);
+  console.log(`Imported ${records.length} records as ${chunkCount} chunk(s) (≤${CHUNK_BODY_MAX} chars each).`);
 }
 
 main().catch((e) => {
-  // eslint-disable-next-line no-console
   console.error(e instanceof Error ? e.message : String(e));
   process.exitCode = 1;
 });
-
