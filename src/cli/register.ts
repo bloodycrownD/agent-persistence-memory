@@ -8,9 +8,16 @@ import { registerConfig } from "./commands/config";
 export function buildProgram(): Command {
   const program = new Command();
   program.name("apm").description("APM local memory CLI").version("1.0.0");
+  // Shown after `apm --help` only (not stderr from a failing command). Kept short so it reads as notes, not an error.
   program.addHelpText(
     "afterAll",
-    "\nTimestamps use system local timezone (format: YYYY-MM-DD HH:mm:ss).\nOn Windows, run `chcp 65001` in the console before `apm` if mixed Chinese/English output appears corrupted.\nThe `apm` bin runs dist/index.js — run `npm run build` after source changes (or `npm install` in this repo to run the prepare script)."
+    [
+      "",
+      "Notes:",
+      "  • Section YAML timestamps use the local timezone (YYYY-MM-DD HH:mm:ss).",
+      "  • Windows: if Chinese/English output looks wrong, try UTF-8 first:  chcp 65001",
+      "  • When developing this repo: the apm bin runs dist/ — run `npm run build` after editing src/."
+    ].join("\n")
   );
 
   registerRead(program);
