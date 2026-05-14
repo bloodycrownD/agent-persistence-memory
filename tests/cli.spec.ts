@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -48,6 +48,22 @@ afterEach(() => {
 });
 
 describe("apm cli spec paths", () => {
+  it("registers dynamic but not tmp or chunks", () => {
+    const program = buildProgram();
+    const names = program.commands.map((c) => c.name());
+    expect(names).toContain("dynamic");
+    expect(names).not.toContain("tmp");
+    expect(names).not.toContain("chunks");
+  });
+
+  it("ensureApm creates only dynamic detail path (no tmp/chunks dirs)", async () => {
+    const dir = newTempDir();
+    await runCli(["dynamic", "show"], dir);
+    expect(existsSync(join(dir, ".apm", "dynamic", "detail.md"))).toBe(true);
+    expect(existsSync(join(dir, ".apm", "tmp"))).toBe(false);
+    expect(existsSync(join(dir, ".apm", "chunks"))).toBe(false);
+  });
+
   it("enforces role limits via config and renders line numbers", async () => {
     const dir = newTempDir();
     await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "10"], dir);
@@ -58,78 +74,15 @@ describe("apm cli spec paths", () => {
     expect(roleFile.startsWith("---\n")).toBe(true);
   });
 
-  it("supports tmp todos add/list/complete with uniqueness", async () => {
+  it("enforces dynamicDetail limits via config and supports dynamic show/detail", async () => {
     const dir = newTempDir();
-    await runCli(["tmp", "todos", "add", "--name", "t1", "--description", "hello", "--index", "1"], dir);
-    await runCli(
-      ["tmp", "todos", "add", "--name", "t2", "--description", "world", "--index", "2", "--priority", "1"],
-      dir
-    );
-    const listed = await runCli(["tmp", "todos", "list"], dir);
-    expect(listed.out).toContain("t2");
-    expect(listed.out).toContain("t1");
-    await runCli(["tmp", "todos", "complete", "--index", "1"], dir);
-    const shown = await runCli(["tmp", "todos", "show"], dir);
-    expect(shown.out).toContain("[x]");
-  });
-
-  it("validates todo numeric inputs (index/priority) with clear errors", async () => {
-    const dir = newTempDir();
-    expect(await runCliFail(["tmp", "todos", "add", "--name", "t1", "--description", "x", "--index", "0"], dir)).toContain(
-      "Invalid --index"
-    );
-    expect(
-      await runCliFail(
-        ["tmp", "todos", "add", "--name", "t1", "--description", "x", "--index", "1", "--priority", "NaN"],
-        dir
-      )
-    ).toContain("Invalid --priority");
-    await runCli(["tmp", "todos", "add", "--name", "t1", "--description", "x", "--index", "1", "--priority", "2"], dir);
-    expect(await runCliFail(["tmp", "todos", "priority", "--index", "1", "--priority", "1.5"], dir)).toContain(
-      "Invalid --priority"
-    );
-    expect(await runCliFail(["tmp", "todos", "complete", "--index", "-1"], dir)).toContain("Invalid --index");
-    expect(await runCliFail(["tmp", "todos", "rm", "--index", "abc"], dir)).toContain("Invalid --index");
-    expect(await runCliFail(["tmp", "todos", "edit", "--index", "Infinity", "--description", "y"], dir)).toContain(
-      "Invalid --index"
-    );
-  });
-
-  it("supports chunks add/list/search/read", async () => {
-    const dir = newTempDir();
-    await runCli(["chunks", "add", "--name", "c1", "--keywords", "alpha,beta", "--text", "first content"], dir);
-    await runCli(["chunks", "add", "--name", "c2", "--keywords", "gamma", "--text", "second content"], dir);
-    const listed = await runCli(["chunks", "list", "--sort", "name", "--order", "asc"], dir);
-    expect(listed.out).toContain("c1");
-    expect(listed.out).toContain("c2");
-    const searched = await runCli(["chunks", "search", "--q", "alp", "--field", "keywords", "--match", "prefix"], dir);
-    expect(searched.out.trim()).toBe("c1");
-    const read = await runCli(["chunks", "read", "--names", "c1,c2"], dir);
-    expect(read.out).toContain("## c1");
-    expect(read.out).toContain("## c2");
-  });
-
-  it("validates chunks list numeric args (size/page)", async () => {
-    const dir = newTempDir();
-    await runCli(["chunks", "add", "--name", "c1", "--keywords", "k", "--text", "x"], dir);
-    expect(await runCliFail(["chunks", "list", "--size", "0"], dir)).toContain("Invalid --size");
-    expect(await runCliFail(["chunks", "list", "--page", "-2"], dir)).toContain("Invalid --page");
-    expect(await runCliFail(["chunks", "list", "--page", "1.2"], dir)).toContain("Invalid --page");
-    expect(await runCliFail(["chunks", "list", "--order", "nope"], dir)).toContain("Invalid --order");
-  });
-
-  it("supports chunks edit rename with safe-name + uniqueness", async () => {
-    const dir = newTempDir();
-    await runCli(["chunks", "add", "--name", "c1", "--keywords", "alpha", "--text", "first"], dir);
-    await runCli(["chunks", "add", "--name", "c2", "--keywords", "beta", "--text", "second"], dir);
-    expect(await runCliFail(["chunks", "edit", "--name", "c1", "--new-name", "c2"], dir)).toContain("Chunk name exists");
-    expect(await runCliFail(["chunks", "edit", "--name", "c1", "--new-name", "../bad"], dir)).toContain("Invalid name");
-    await runCli(["chunks", "edit", "--name", "c1", "--new-name", "c1_renamed", "--text", "updated"], dir);
-    const listed = await runCli(["chunks", "list"], dir);
-    expect(listed.out).toContain("c1_renamed");
-    expect(await runCliFail(["chunks", "read", "--names", "c1"], dir)).toContain("Chunk not found");
-    const read = await runCli(["chunks", "read", "--names", "c1_renamed"], dir);
-    expect(read.out).toContain("updated");
+    await runCli(["config", "set", "--section", "dynamicDetail", "--min", "10", "--max", "80"], dir);
+    const body = "x".repeat(10);
+    await runCli(["dynamic", "detail", "write", "--text", body], dir);
+    const shown = await runCli(["dynamic", "detail", "show"], dir);
+    expect(shown.out).toContain(`1|${body}`);
+    const viaShow = await runCli(["dynamic", "show"], dir);
+    expect(viaShow.out).toContain(`1|${body}`);
   });
 
   it("read command is under development (placeholder)", async () => {
@@ -180,76 +133,4 @@ describe("apm cli spec paths", () => {
     expect(message).toContain("createdAt");
     expect(message).toContain("YYYY-MM-DD HH:mm:ss");
   });
-
-  it("validates todo front matter timestamp format with actionable field error", async () => {
-    const dir = newTempDir();
-    await runCli(["tmp", "todos", "add", "--name", "t1", "--description", "hello", "--index", "1"], dir);
-    writeFileSync(
-      join(dir, ".apm", "tmp", "todos", "t1.md"),
-      [
-        "---",
-        'name: "t1"',
-        "index: 1",
-        "priority: 5",
-        "completed: false",
-        'createdAt: "2026/01/01 10:00:00"',
-        'updatedAt: "2026-01-01 10:00:00"',
-        "---",
-        "hello"
-      ].join("\n"),
-      "utf8"
-    );
-    const message = await runCliFail(["tmp", "todos", "show"], dir);
-    expect(message).toContain("Invalid todo front matter");
-    expect(message).toContain("createdAt");
-    expect(message).toContain("YYYY-MM-DD HH:mm:ss");
-  });
-
-  it("validates chunk front matter timestamp format with actionable field error", async () => {
-    const dir = newTempDir();
-    await runCli(["chunks", "add", "--name", "c1", "--keywords", "alpha", "--text", "hello"], dir);
-    writeFileSync(
-      join(dir, ".apm", "chunks", "c1.md"),
-      [
-        "---",
-        'name: "c1"',
-        'keywords: ["alpha"]',
-        'createdAt: "2026-01-01 10:00"',
-        'updatedAt: "2026-01-01 10:00:00"',
-        "---",
-        "hello"
-      ].join("\n"),
-      "utf8"
-    );
-    const message = await runCliFail(["chunks", "list"], dir);
-    expect(message).toContain("Invalid chunk front matter");
-    expect(message).toContain("createdAt");
-    expect(message).toContain("YYYY-MM-DD HH:mm:ss");
-  });
-
-  it("rejects chunk text over 200 chars (countChars)", async () => {
-    const dir = newTempDir();
-    const ok200 = "x".repeat(200);
-    await runCli(["chunks", "add", "--name", "c200", "--keywords", "k", "--text", ok200], dir);
-    const bad201 = "y".repeat(201);
-    expect(await runCliFail(["chunks", "add", "--name", "c201", "--keywords", "k", "--text", bad201], dir)).toContain(
-      "200"
-    );
-    await runCli(["chunks", "add", "--name", "cedit", "--keywords", "k", "--text", "hi"], dir);
-    expect(await runCliFail(["chunks", "edit", "--name", "cedit", "--text", bad201], dir)).toContain("200");
-  });
-
-  it("rejects tmp todos add when 20 todos already exist", async () => {
-    const dir = newTempDir();
-    for (let i = 1; i <= 20; i++) {
-      await runCli(
-        ["tmp", "todos", "add", "--name", `t${i}`, "--description", "d", "--index", String(i)],
-        dir
-      );
-    }
-    expect(
-      await runCliFail(["tmp", "todos", "add", "--name", "overflow", "--description", "d", "--index", "21"], dir)
-    ).toContain("20");
-  });
 });
-

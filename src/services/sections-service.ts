@@ -19,14 +19,14 @@ function sectionPath(cwd: string, section: Section): string {
 }
 
 function sectionLabel(section: Section): string {
-  if (section === "tmpDetail") return "tmp detail";
+  if (section === "dynamicDetail") return "dynamic detail";
   return section;
 }
 
 function enforceLimits(cwd: string, section: Section, text: string): void {
   const cfg = readConfig(cwd);
   const limits: Limits =
-    section === "role" ? cfg.limits.role : section === "persist" ? cfg.limits.persist : cfg.limits.tmpDetail;
+    section === "role" ? cfg.limits.role : section === "persist" ? cfg.limits.persist : cfg.limits.dynamicDetail;
   const len = countChars(text);
   if (len < limits.min || len > limits.max) {
     throw new Error(`${sectionLabel(section)} content length must be ${limits.min}~${limits.max} chars.`);

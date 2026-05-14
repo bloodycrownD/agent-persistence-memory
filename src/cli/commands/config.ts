@@ -14,7 +14,7 @@ export function registerConfig(program: Command): void {
 
   config
     .command("set")
-    .requiredOption("--section <section>", "role|persist|tmpDetail")
+    .requiredOption("--section <section>", "role|persist|dynamicDetail")
     .requiredOption("--min <min>")
     .requiredOption("--max <max>")
     .action(async (opts: { section: Section; min: string; max: string }) => {
@@ -22,7 +22,7 @@ export function registerConfig(program: Command): void {
       ensureApm(cwd);
       const cfg = readConfig(cwd);
       const sec = opts.section;
-      if (!["role", "persist", "tmpDetail"].includes(sec)) throw new Error(`Invalid section: ${sec}`);
+      if (!["role", "persist", "dynamicDetail"].includes(sec)) throw new Error(`Invalid section: ${sec}`);
       const min = Number(opts.min);
       const max = Number(opts.max);
       if (min > max) throw new Error("min must be <= max.");

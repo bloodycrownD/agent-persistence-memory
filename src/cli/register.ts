@@ -2,8 +2,7 @@ import { Command } from "commander";
 import { registerRead } from "./commands/read";
 import { registerRole } from "./commands/role";
 import { registerPersist } from "./commands/persist";
-import { registerTmp } from "./commands/tmp";
-import { registerChunks } from "./commands/chunks";
+import { registerDynamic } from "./commands/dynamic";
 import { registerConfig } from "./commands/config";
 
 export function buildProgram(): Command {
@@ -17,10 +16,8 @@ export function buildProgram(): Command {
   registerRead(program);
   registerRole(program);
   registerPersist(program);
-  registerTmp(program);
-  registerChunks(program);
+  registerDynamic(program);
   registerConfig(program);
 
   return program;
 }
-
