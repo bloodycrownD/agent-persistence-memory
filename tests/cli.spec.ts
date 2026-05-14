@@ -69,6 +69,15 @@ describe("apm cli v2 layout", () => {
     expect(message).toMatch(/apm init/i);
   });
 
+  it("T2b: legacy .apm/dynamic tree is rejected", async () => {
+    const dir = newTempDir();
+    mkdirSync(join(dir, ".apm", "dynamic"), { recursive: true });
+    writeFileSync(join(dir, ".apm", "dynamic", "detail.md"), "---\n---\nold\n", "utf8");
+    const message = await runCliFail(["role", "show"], dir);
+    expect(message).toMatch(/Old \.apm layout|old \.apm layout/i);
+    expect(message).toMatch(/\.apm\/dynamic|dynamic/i);
+  });
+
   it("T3: dynamic uses flat show/write/edit (no detail subcommand)", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);

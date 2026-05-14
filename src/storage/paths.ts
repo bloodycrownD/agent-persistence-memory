@@ -36,6 +36,9 @@ export function isLegacyApmLayout(cwd: string): boolean {
   const root = join(cwd, ".apm");
   if (!existsSync(root)) return false;
   if (existsSync(join(root, "persistence"))) return true;
+  // Pre-v2 task dynamic lived under `.apm/dynamic/` (e.g. detail.md). Any such tree
+  // coexisting with a partial v2 upgrade is unsafe; refuse until user removes it.
+  if (existsSync(join(root, "dynamic"))) return true;
   const legacyRootRole = existsSync(join(root, "role.md"));
   const v2MemoryRole = existsSync(join(root, "memory", "role.md"));
   if (legacyRootRole && !v2MemoryRole) return true;
@@ -45,7 +48,7 @@ export function isLegacyApmLayout(cwd: string): boolean {
 export function assertNotLegacyApmLayout(cwd: string): void {
   if (!isLegacyApmLayout(cwd)) return;
   throw new Error(
-    "Old .apm layout detected (e.g. .apm/persistence or .apm/role.md without .apm/memory/role.md). " +
+    "Old .apm layout detected (e.g. `.apm/persistence`, `.apm/dynamic/`, or `.apm/role.md` without `.apm/memory/role.md`). " +
       "Automatic migration is not supported. Back up your data, remove or replace the old .apm tree, then run `apm init`."
   );
 }
