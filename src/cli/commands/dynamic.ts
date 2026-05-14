@@ -1,19 +1,23 @@
 import type { Command } from "commander";
-import { ensureApm } from "../../storage/paths";
+import { ensureWorkspace } from "../../storage/paths";
 import { registerSectionCommands } from "./section";
-import { toLineNumbered } from "../../formatters/line-number";
-import { readSectionContent } from "../../services/sections-service";
+import { archiveMemoryDynamic, clearMemoryDynamic } from "../../services/dynamic-archive-service";
 
 export function registerDynamic(program: Command): void {
   const dynamic = program.command("dynamic");
+  registerSectionCommands(dynamic, "dynamicDetail");
 
-  const detailCmd = dynamic.command("detail");
-  registerSectionCommands(detailCmd, "dynamicDetail");
-
-  dynamic.command("show").action(() => {
+  dynamic.command("archive").description("Copy memory/dynamic.md into memory/archive/ with a timestamped filename").action(async () => {
     const cwd = process.cwd();
-    ensureApm(cwd);
-    const detail = readSectionContent(cwd, "dynamicDetail");
-    console.log(toLineNumbered(detail || "(empty)"));
+    ensureWorkspace(cwd);
+    await archiveMemoryDynamic(cwd);
+    console.log("OK");
+  });
+
+  dynamic.command("clear").description("Reset memory/dynamic.md to an empty section template").action(async () => {
+    const cwd = process.cwd();
+    ensureWorkspace(cwd);
+    await clearMemoryDynamic(cwd);
+    console.log("OK");
   });
 }

@@ -13,20 +13,28 @@ import type { Limits, Section } from "../schemas/config";
 
 function sectionPath(cwd: string, section: Section): string {
   const p = apmPaths(cwd);
-  if (section === "role") return p.role;
-  if (section === "persist") return p.persist;
-  return p.detail;
+  if (section === "role") return p.memoryRole;
+  if (section === "persist") return p.memoryPersist;
+  if (section === "dynamicDetail") return p.memoryDynamic;
+  return p.kbDynamicDetail;
 }
 
 function sectionLabel(section: Section): string {
-  if (section === "dynamicDetail") return "dynamic detail";
+  if (section === "dynamicDetail") return "dynamic";
+  if (section === "kbDynamicDetail") return "kb dynamic";
   return section;
 }
 
 function enforceLimits(cwd: string, section: Section, text: string): void {
   const cfg = readConfig(cwd);
   const limits: Limits =
-    section === "role" ? cfg.limits.role : section === "persist" ? cfg.limits.persist : cfg.limits.dynamicDetail;
+    section === "role"
+      ? cfg.limits.role
+      : section === "persist"
+        ? cfg.limits.persist
+        : section === "dynamicDetail"
+          ? cfg.limits.dynamicDetail
+          : cfg.limits.kbDynamicDetail;
   const len = countChars(text);
   if (len < limits.min || len > limits.max) {
     throw new Error(`${sectionLabel(section)} content length must be ${limits.min}~${limits.max} chars.`);
@@ -97,4 +105,3 @@ export async function editSection(cwd: string, section: Section, start: number, 
   lines.splice(start - 1, end - start + 1, ...text.split("\n"));
   await writeSection(cwd, section, lines.join("\n"));
 }
-

@@ -1,26 +1,81 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { nowLocal } from "../core/time";
 import { renderFrontMatter } from "./markdown";
 import { DEFAULT_CONFIG } from "../schemas/config";
 
+/**
+ * Canonical v2 paths under `.apm/`: memory (role/persist/dynamic + archive),
+ * kb (docs, dynamic/detail, index/search.json.gz). Callers use this object
+ * instead of hard-coding layout segments.
+ */
 export function apmPaths(cwd: string) {
   const root = join(cwd, ".apm");
   return {
     root,
     config: join(root, "config.json"),
     status: join(root, "status.json"),
-    persist: join(root, "persistence", "memory.md"),
-    detail: join(root, "dynamic", "detail.md"),
-    role: join(root, "role.md"),
-    lock: join(root, ".write.lock")
+    lock: join(root, ".write.lock"),
+    memoryRole: join(root, "memory", "role.md"),
+    memoryPersist: join(root, "memory", "persist.md"),
+    memoryDynamic: join(root, "memory", "dynamic.md"),
+    memoryArchiveDir: join(root, "memory", "archive"),
+    kbDocs: join(root, "kb", "docs"),
+    kbDynamicDetail: join(root, "kb", "dynamic", "detail.md"),
+    kbIndexDir: join(root, "kb", "index"),
+    kbSearchIndexGz: join(root, "kb", "index", "search.json.gz")
   };
 }
 
-export function ensureApm(cwd: string): void {
+function isDir(path: string): boolean {
+  return existsSync(path) && statSync(path).isDirectory();
+}
+
+/** True if `.apm` uses pre-v2 paths (no auto-migration). */
+export function isLegacyApmLayout(cwd: string): boolean {
+  const root = join(cwd, ".apm");
+  if (!existsSync(root)) return false;
+  if (existsSync(join(root, "persistence"))) return true;
+  const legacyRootRole = existsSync(join(root, "role.md"));
+  const v2MemoryRole = existsSync(join(root, "memory", "role.md"));
+  if (legacyRootRole && !v2MemoryRole) return true;
+  return false;
+}
+
+export function assertNotLegacyApmLayout(cwd: string): void {
+  if (!isLegacyApmLayout(cwd)) return;
+  throw new Error(
+    "Old .apm layout detected (e.g. .apm/persistence or .apm/role.md without .apm/memory/role.md). " +
+      "Automatic migration is not supported. Back up your data, remove or replace the old .apm tree, then run `apm init`."
+  );
+}
+
+export function isV2WorkspaceComplete(cwd: string): boolean {
   const p = apmPaths(cwd);
-  mkdirSync(join(p.root, "persistence"), { recursive: true });
-  mkdirSync(join(p.root, "dynamic"), { recursive: true });
+  if (!existsSync(p.root)) return false;
+  return (
+    existsSync(p.memoryRole) &&
+    existsSync(p.memoryPersist) &&
+    existsSync(p.memoryDynamic) &&
+    isDir(p.memoryArchiveDir) &&
+    isDir(p.kbDocs) &&
+    existsSync(p.kbDynamicDetail) &&
+    isDir(p.kbIndexDir) &&
+    existsSync(p.config) &&
+    existsSync(p.status)
+  );
+}
+
+/** Idempotent v2 tree + default section files and kb/docs placeholder. */
+export function createWorkspaceV2Idempotent(cwd: string): void {
+  const p = apmPaths(cwd);
+  mkdirSync(p.root, { recursive: true });
+  mkdirSync(join(p.root, "memory"), { recursive: true });
+  mkdirSync(p.memoryArchiveDir, { recursive: true });
+  mkdirSync(join(p.root, "kb", "dynamic"), { recursive: true });
+  mkdirSync(p.kbDocs, { recursive: true });
+  mkdirSync(p.kbIndexDir, { recursive: true });
+
   const now = nowLocal();
   if (!existsSync(p.config)) {
     writeFileSync(p.config, JSON.stringify(DEFAULT_CONFIG, null, 2), "utf8");
@@ -29,7 +84,43 @@ export function ensureApm(cwd: string): void {
     writeFileSync(p.status, JSON.stringify({ initializedAt: now, updatedAt: now, lastReadAt: null }, null, 2), "utf8");
   }
   const emptySection = renderFrontMatter({ createdAt: now, updatedAt: now }, "");
-  if (!existsSync(p.role)) writeFileSync(p.role, emptySection, "utf8");
-  if (!existsSync(p.persist)) writeFileSync(p.persist, emptySection, "utf8");
-  if (!existsSync(p.detail)) writeFileSync(p.detail, emptySection, "utf8");
+  if (!existsSync(p.memoryRole)) writeFileSync(p.memoryRole, emptySection, "utf8");
+  if (!existsSync(p.memoryPersist)) writeFileSync(p.memoryPersist, emptySection, "utf8");
+  if (!existsSync(p.memoryDynamic)) writeFileSync(p.memoryDynamic, emptySection, "utf8");
+  if (!existsSync(p.kbDynamicDetail)) writeFileSync(p.kbDynamicDetail, emptySection, "utf8");
+
+  const kbReadme = join(p.kbDocs, "README.md");
+  if (!existsSync(kbReadme)) {
+    writeFileSync(
+      kbReadme,
+      "# Knowledge base\n\nAdd Markdown (`.md`) files here. Nested directories are allowed.\n",
+      "utf8"
+    );
+  }
+}
+
+/**
+ * `apm init`: refuse legacy trees, then create or repair the v2 layout without
+ * overwriting existing section bodies.
+ */
+export function initApmWorkspace(cwd: string): void {
+  assertNotLegacyApmLayout(cwd);
+  createWorkspaceV2Idempotent(cwd);
+}
+
+/**
+ * Prepare `.apm` for normal commands: reject legacy layout; lazily create a
+ * full v2 tree when `.apm` is missing; otherwise require a complete v2 tree
+ * (run `apm init` if incomplete).
+ */
+export function ensureWorkspace(cwd: string): void {
+  assertNotLegacyApmLayout(cwd);
+  const p = apmPaths(cwd);
+  if (!existsSync(p.root)) {
+    createWorkspaceV2Idempotent(cwd);
+    return;
+  }
+  if (!isV2WorkspaceComplete(cwd)) {
+    throw new Error("Incomplete .apm workspace (v2). Run `apm init` to create the full directory layout.");
+  }
 }
