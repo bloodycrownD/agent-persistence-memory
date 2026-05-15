@@ -19,7 +19,7 @@ export function apmPaths(cwd: string) {
     memoryRole: join(root, "memory", "role.md"),
     memoryPersist: join(root, "memory", "persist.md"),
     memoryDynamic: join(root, "memory", "dynamic.md"),
-    memoryArchiveDir: join(root, "memory", "archive"),
+    kbArchiveDir: join(root, "kb", "archive"),
     kbDocs: join(root, "kb", "docs"),
     kbDynamicDetail: join(root, "kb", "dynamic", "detail.md"),
     kbIndexDir: join(root, "kb", "index"),
@@ -60,7 +60,7 @@ export function isV2WorkspaceComplete(cwd: string): boolean {
     existsSync(p.memoryRole) &&
     existsSync(p.memoryPersist) &&
     existsSync(p.memoryDynamic) &&
-    isDir(p.memoryArchiveDir) &&
+    isDir(p.kbArchiveDir) &&
     isDir(p.kbDocs) &&
     existsSync(p.kbDynamicDetail) &&
     isDir(p.kbIndexDir) &&
@@ -74,7 +74,7 @@ export function createWorkspaceV2Idempotent(cwd: string): void {
   const p = apmPaths(cwd);
   mkdirSync(p.root, { recursive: true });
   mkdirSync(join(p.root, "memory"), { recursive: true });
-  mkdirSync(p.memoryArchiveDir, { recursive: true });
+  mkdirSync(p.kbArchiveDir, { recursive: true });
   mkdirSync(join(p.root, "kb", "dynamic"), { recursive: true });
   mkdirSync(p.kbDocs, { recursive: true });
   mkdirSync(p.kbIndexDir, { recursive: true });

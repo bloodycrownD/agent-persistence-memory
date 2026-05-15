@@ -13,10 +13,10 @@ function dynamicArchiveBasename(): string {
   return `dynamic-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.md`;
 }
 
-/** Copy full `memory/dynamic.md` (including front matter) into `memory/archive/` under a timestamped name. */
+/** Copy full `memory/dynamic.md` (including front matter) into `kb/archive/` under a timestamped name. */
 export async function archiveMemoryDynamic(cwd: string): Promise<string> {
   const paths = apmPaths(cwd);
-  const dest = join(paths.memoryArchiveDir, dynamicArchiveBasename());
+  const dest = join(paths.kbArchiveDir, dynamicArchiveBasename());
   await withGlobalLock(paths.lock, async () => {
     const body = readFileSync(paths.memoryDynamic, "utf8");
     await serialWrite(dest, async () => {
@@ -39,7 +39,7 @@ export async function clearMemoryDynamic(cwd: string): Promise<void> {
 }
 
 export function countMemoryArchiveFiles(cwd: string): number {
-  const dir = apmPaths(cwd).memoryArchiveDir;
+  const dir = apmPaths(cwd).kbArchiveDir;
   if (!existsSync(dir)) return 0;
   return readdirSync(dir).length;
 }

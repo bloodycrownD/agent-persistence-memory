@@ -7,7 +7,7 @@ export function registerDynamic(program: Command): void {
   const dynamic = program.command("dynamic");
   registerSectionCommands(dynamic, "dynamicDetail");
 
-  dynamic.command("archive").description("Copy memory/dynamic.md into memory/archive/ with a timestamped filename").action(async () => {
+  dynamic.command("archive").description("Copy memory/dynamic.md into kb/archive/ with a timestamped filename").action(async () => {
     const cwd = process.cwd();
     ensureWorkspace(cwd);
     await archiveMemoryDynamic(cwd);

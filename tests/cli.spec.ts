@@ -54,7 +54,7 @@ describe("apm cli v2 layout", () => {
     expect(existsSync(join(dir, ".apm", "memory", "role.md"))).toBe(true);
     expect(existsSync(join(dir, ".apm", "memory", "persist.md"))).toBe(true);
     expect(existsSync(join(dir, ".apm", "memory", "dynamic.md"))).toBe(true);
-    expect(existsSync(join(dir, ".apm", "memory", "archive"))).toBe(true);
+    expect(existsSync(join(dir, ".apm", "kb", "archive"))).toBe(true);
     expect(existsSync(join(dir, ".apm", "kb", "docs"))).toBe(true);
     expect(existsSync(join(dir, ".apm", "kb", "dynamic", "detail.md"))).toBe(true);
     expect(existsSync(join(dir, ".apm", "kb", "index"))).toBe(true);
@@ -98,7 +98,7 @@ describe("apm cli v2 layout", () => {
     const body = "y".repeat(12);
     await runCli(["dynamic", "write", "--text", body], dir);
     await runCli(["dynamic", "archive"], dir);
-    const archDir = join(dir, ".apm", "memory", "archive");
+    const archDir = join(dir, ".apm", "kb", "archive");
     const files = readdirSync(archDir).filter((f) => /^dynamic-\d{4}-\d{2}-\d{2}-\d{6}\.md$/.test(f));
     expect(files.length).toBeGreaterThanOrEqual(1);
     const archived = readFileSync(join(archDir, files[0]), "utf8");
@@ -112,7 +112,7 @@ describe("apm cli v2 layout", () => {
     await runCli(["config", "set", "--section", "dynamicDetail", "--min", "10", "--max", "200"], dir);
     await runCli(["dynamic", "write", "--text", "z".repeat(12)], dir);
     await runCli(["dynamic", "archive"], dir);
-    const archDir = join(dir, ".apm", "memory", "archive");
+    const archDir = join(dir, ".apm", "kb", "archive");
     const n = readdirSync(archDir).length;
     await runCli(["dynamic", "clear"], dir);
     expect(readdirSync(archDir).length).toBe(n);

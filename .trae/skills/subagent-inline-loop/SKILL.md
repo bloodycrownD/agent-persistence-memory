@@ -1,6 +1,6 @@
 ---
 name: subagent-inline-loop
-description: 规范化循环：实现子代理（inline 单次执行）-> code-reviewer 对 spec 严格评审 -> 修复 -> 循环直到 merge-ready。适用于“按 spec 一次做完并反复收敛”的任务。
+description: 规范化循环：实现子代理（inline 单次执行）-> 评审子代理对 spec 严格评审 -> 修复 -> 循环直到 merge-ready。适用于“按 spec 一次做完并反复收敛”的任务。
 disable-model-invocation: true
 ---
 
@@ -11,7 +11,7 @@ disable-model-invocation: true
 执行一个基于 spec 的固定循环：
 
 1. **实现阶段：必须启动 `generalPurpose` 子代理**（单次 inline 运行）
-2. **评审阶段：必须启动 `code-reviewer` 子代理**（严格对照 spec）
+2. **评审阶段：优先启动 `code-reviewer` 子代理**（严格对照 spec）；若不可用，允许使用 `generalPurpose` 评审
 3. 若未通过，继续下一轮“实现子代理 -> 评审子代理”直到 **merge-ready**
 
 该技能用于“严格按 spec 收敛，不靠主代理拍脑袋完成”的场景。
@@ -31,7 +31,7 @@ disable-model-invocation: true
 ### 强制规则（必须）
 
 - 实现阶段：**必须**派发 `generalPurpose` 子代理  
-- 评审阶段：**必须**派发 `code-reviewer` 子代理  
+- 评审阶段：**优先**派发 `code-reviewer` 子代理；若不可用，允许改派 `generalPurpose`  
 - 除非发生资源故障（见“失败处理”），否则主代理不得跳过子代理步骤
 
 ---
@@ -41,7 +41,7 @@ disable-model-invocation: true
 - 目标 worktree/branch 工作区干净（无未提交改动）
 - 已知以下信息：
   - `Spec path`（唯一事实来源）
-  - `Plan path`（可选）
+  - `PRD path`（需求来源，可选）
   - `Repo/worktree path`
   - 当前分支名
 - 分支安全闸：
@@ -62,7 +62,7 @@ disable-model-invocation: true
 
 - repo/worktree 路径
 - 分支名
-- spec 路径（如有 plan 一并提供）
+- spec 路径（如有 prd 一并提供）
 - 上一轮 CR 的 `must-fix`（逐条原样粘贴）
 - 约束：
   - inline 模式（单次运行，不拆每任务多子代理）
@@ -77,9 +77,9 @@ disable-model-invocation: true
   - 验证命令及 pass/fail
   - 剩余缺口/阻塞
 
-### Step B：评审子代理（code-reviewer）
+### Step B：评审子代理（优先 code-reviewer，回退 generalPurpose）
 
-派发一个 `code-reviewer` 子代理，输入：
+派发一个评审子代理，输入：
 
 - spec 路径
 - repo/worktree 路径
@@ -170,7 +170,7 @@ Execute spec-driven fixes in INLINE mode (single run).
 Repo/worktree: <PATH>
 Branch: <BRANCH>
 Spec: <SPEC_PATH>
-Plan (optional): <PLAN_PATH>
+PRD (optional): <PRD_PATH>
 
 Must-fix items from last CR:
 - ...
@@ -187,7 +187,7 @@ Return exactly:
 4) Blockers (if any)
 ```
 
-### 评审子代理（code-reviewer）
+### 评审子代理（优先 code-reviewer，回退 generalPurpose）
 
 ```text
 Review conformance against spec.
@@ -204,10 +204,15 @@ Output:
 4) Verdict: merge-ready or not
 ```
 
+评审子代理选择顺序：
+1. 首选 `code-reviewer`
+2. 若模型/环境中不可用或无法启动，则使用 `generalPurpose`，并保持同样输出格式与严格度
+
 ---
 
 ## 备注
 
+- 文档输入/输出仅使用 `prd.md` 与 `spec.md`
 - spec 是唯一事实来源；若实现要偏离，先更新 spec 再实施
 - 每轮优先小而可回滚的提交
 - inline-loop 产出的实现代码默认应具备可读注释；若评审指出“可维护性差/难理解”，视为 must-fix

@@ -32,13 +32,14 @@
   - 新增 **`init`**：创建本 PRD 约定的 `.apm` 下目录与占位/默认文件（含 `config`/`status` 等若产品仍需要，以保持 CLI 可运行）。
 - **目录布局（均在 `.apm` 下，破坏性重组）**
   - **`.apm/kb/`**：至少包含 **`docs/`**（可嵌套子目录，**不打平**）、**`dynamic/`**（知识库侧过程笔记，如 `detail.md`；与 memory 侧任务动态**路径隔离**）。
-  - **`.apm/memory/`**：**扁平主文件** + 归档目录——**`role.md`**、**`persist.md`**、**`dynamic.md`**（分别承载角色、持久记忆、任务动态正文），以及 **`archive/`**（仅承接 `dynamic` 的归档副本，时间戳命名）。
+  - **`.apm/memory/`**：**扁平主文件** + 归档目录——**`role.md`**、**`persist.md`**、**`dynamic.md`**（分别承载角色、持久记忆、任务动态正文）。
+  - **`.apm/kb/`**：至少包含 **`docs/`**（可嵌套子目录，**不打平**）、**`dynamic/`**（知识库侧过程笔记，如 `detail.md`；与 memory 侧任务动态**路径隔离**）、**`archive/`**（仅承接 `dynamic` 的归档副本，时间戳命名）。
 - **知识库检索（产品能力描述）**
   - 支持**倒排或等价全文索引**能力，并对中文场景有可用的**分词或等价切分策略**（效果上接近「能搜到词/短语」，不要求与某一商业搜索引擎一致）。
   - 索引持久化：**JSON 形态且 gzip 压缩**落盘；路径与文件名以实现为准，须写入 `.apm/kb/` 下合理位置且不污染 `docs/` 源文。
 - **`dynamic` 归档**
-  - **`archive`**：将当前 **`memory/dynamic.md`** 全文归档到 **`.apm/memory/archive/`** 下**带时间戳**的文件（或等价单文件命名），主动态区后续状态在验收中定义。
-  - **`clear`**：清空或重置 **`memory/dynamic.md`** 为「空工作态」，**不**静默删除 **`memory/archive/`** 内已归档文件。
+  - **`archive`**：将当前 **`memory/dynamic.md`** 全文归档到 **`.apm/kb/archive/`** 下**带时间戳**的文件（或等价单文件命名），主动态区后续状态在验收中定义。
+  - **`clear`**：清空或重置 **`memory/dynamic.md`** 为「空工作态」，**不**静默删除 **`.apm/kb/archive/`** 内已归档文件。
 
 ### 不包含范围
 
@@ -62,7 +63,7 @@
 
 - **Given** 空目录且无 `.apm`  
 - **When** 用户执行 `apm init`（或文档化后的等价入口）  
-- **Then** 出现 `.apm/kb/docs`、`.apm/kb/dynamic`、`.apm/memory/role.md`、`.apm/memory/persist.md`、`.apm/memory/dynamic.md`、`.apm/memory/archive`（`archive` 可在 `init` 预创建或首次 `archive` 时创建，须在验收中固定一种），且后续 `apm kb --help` / `apm dynamic --help` 可正常输出。
+- **Then** 出现 `.apm/kb/docs`、`.apm/kb/dynamic`、`.apm/kb/archive`、`.apm/memory/role.md`、`.apm/memory/persist.md`、`.apm/memory/dynamic.md`，且后续 `apm kb --help` / `apm dynamic --help` 可正常输出。
 
 ### kb 导入与搜索
 
@@ -79,11 +80,11 @@
 
 - **Given** **`memory/dynamic.md`** 主内容非空  
 - **When** 执行 `dynamic archive`  
-- **Then** `.apm/memory/archive/` 下新增**带时间戳**的文件，且内容与归档前主内容一致（或实现定义的等价）；主区行为在实现说明中二选一并在验收中固定：**保留空 front matter 模板**或**截断为约定空文**，须与 `clear` 语义不冲突。
+- **Then** `.apm/kb/archive/` 下新增**带时间戳**的文件，且内容与归档前主内容一致（或实现定义的等价）；主区行为在实现说明中二选一并在验收中固定：**保留空 front matter 模板**或**截断为约定空文**，须与 `clear` 语义不冲突。
 
-- **Given** `.apm/memory/archive/` 下已存在至少一个归档文件  
+- **Given** `.apm/kb/archive/` 下已存在至少一个归档文件  
 - **When** 执行 `dynamic clear`  
-- **Then** 主动态区为约定空态；**`memory/archive/` 内文件数量不减少**（除非 clear 文档明确误用，本需求以不删归档为准）。
+- **Then** 主动态区为约定空态；**`.apm/kb/archive/` 内文件数量不减少**（除非 clear 文档明确误用，本需求以不删归档为准）。
 
 ### 破坏性
 
