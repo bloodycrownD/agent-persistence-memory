@@ -168,7 +168,8 @@ describe("apm cli v2 layout", () => {
     const roleFile = readFileSync(join(dir, ".apm", "memory", "role.md"), "utf8");
     expect(roleFile.startsWith("---\n")).toBe(true);
     const plain = await runCli(["read"], dir);
-    expect(plain.out.trim()).toBe("开发中");
+    expect(plain.out).toContain("# 角色");
+    expect(plain.out).toContain("abcdef");
   });
 
   it("registers init and kb", () => {
