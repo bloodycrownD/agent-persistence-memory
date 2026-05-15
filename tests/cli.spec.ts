@@ -172,6 +172,21 @@ describe("apm cli v2 layout", () => {
     expect(plain.out).toContain("abcdef");
   });
 
+  it("T-READ-ROBUST: read command handles corrupted section files gracefully", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    // Corrupt the role file by removing front matter
+    writeFileSync(join(dir, ".apm", "memory", "role.md"), "corrupted content", "utf8");
+    await runCli(["config", "set", "--section", "persist", "--min", "1", "--max", "100"], dir);
+    await runCli(["persist", "write", "--text", "good-persist"], dir);
+    
+    const res = await runCli(["read"], dir);
+    // Should warn about role but still show persist
+    expect(res.err).toContain('Warning: Failed to read section "角色"');
+    expect(res.out).toContain("# 持久记忆");
+    expect(res.out).toContain("good-persist");
+  });
+
   it("registers init and kb", () => {
     const program = buildProgram();
     const names = program.commands.map((c) => c.name());
