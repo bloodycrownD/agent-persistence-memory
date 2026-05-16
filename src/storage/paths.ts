@@ -19,6 +19,7 @@ export function apmPaths(cwd: string) {
     memoryRole: join(root, "memory", "role.md"),
     memoryPersist: join(root, "memory", "persist.md"),
     memoryDynamic: join(root, "memory", "dynamic.md"),
+    kbRoot: join(root, "kb"),
     kbArchiveDir: join(root, "kb", "archive"),
     kbDocs: join(root, "kb", "docs"),
     kbDynamicDetail: join(root, "kb", "dynamic", "detail.md"),

@@ -7,6 +7,10 @@
 import type { Command } from "commander";
 import { ensureWorkspace } from "../../storage/paths";
 import { readSectionContent } from "../../services/sections-service";
+import {
+  computeReadAssociation,
+  formatAssociationSection
+} from "../../services/read-association-service";
 import type { Section } from "../../schemas/config";
 
 /**
@@ -42,6 +46,9 @@ export function registerRead(program: Command): void {
           console.error(`Warning: Failed to read section "${label}": ${msg}`);
         }
       }
+
+      const assocText = formatAssociationSection(computeReadAssociation(cwd));
+      if (assocText) parts.push(assocText);
 
       if (parts.length > 0) {
         console.log(parts.join("\n\n"));

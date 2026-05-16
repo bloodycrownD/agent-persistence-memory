@@ -72,14 +72,16 @@ function extractKbDoc(raw: string): { body: string; title: string } {
   return { body, title };
 }
 
-function walkKbMdRel(kbDocs: string, relDir = ""): string[] {
-  const dir = relDir ? join(kbDocs, relDir) : kbDocs;
+/** Recurse all `.md` under `kbRoot`; skip only directories named `index`. */
+function walkKbMarkdownUnderKbRoot(kbRoot: string, relDir = ""): string[] {
+  const dir = relDir ? join(kbRoot, relDir) : kbRoot;
   const out: string[] = [];
   if (!existsSync(dir)) return out;
   for (const ent of readdirSync(dir, { withFileTypes: true })) {
+    if (ent.isDirectory() && ent.name === "index") continue;
     const rel = relDir ? `${relDir}/${ent.name}` : ent.name;
     if (ent.isDirectory()) {
-      out.push(...walkKbMdRel(kbDocs, rel));
+      out.push(...walkKbMarkdownUnderKbRoot(kbRoot, rel));
     } else if (ent.isFile() && ent.name.endsWith(".md")) {
       out.push(rel.replace(/\\/g, "/"));
     }
@@ -87,13 +89,69 @@ function walkKbMdRel(kbDocs: string, relDir = ""): string[] {
   return out;
 }
 
+/**
+ * Resolve a kb-relative path under `kbRoot` (posix `rel`); rejects traversal outside kb.
+ */
+export function resolveKbIndexedPath(kbRoot: string, rel: string): string {
+  const safe = rel.replace(/\\/g, "/");
+  if (safe.includes("..") || safe.startsWith("/")) {
+    throw new Error(`Invalid kb path: ${rel}`);
+  }
+  const abs = join(kbRoot, safe);
+  const kbNorm = kbRoot.replace(/\\/g, "/");
+  const absNorm = abs.replace(/\\/g, "/");
+  if (absNorm !== kbNorm && !absNorm.startsWith(`${kbNorm}/`)) {
+    throw new Error(`Invalid kb path: ${rel}`);
+  }
+  return abs;
+}
+
+/** Load persisted MiniSearch index; returns null when gzip index is absent. */
+export function loadKbMiniSearch(cwd: string): MiniSearch<KbIndexDoc> | null {
+  ensureWorkspace(cwd);
+  const p = apmPaths(cwd);
+  if (!existsSync(p.kbSearchIndexGz)) return null;
+  const buf = gunzipSync(readFileSync(p.kbSearchIndexGz));
+  return MiniSearch.loadJSON<KbIndexDoc>(buf.toString("utf8"), kbMiniSearchOptions());
+}
+
+export type KbSearchHitEx = {
+  path: string;
+  title: string;
+  score: number;
+  terms: string[];
+  match: Record<string, string[]>;
+};
+
+/** Run BM25+ search on a loaded index; results are score-ordered hits with match metadata. */
+export function searchKbIndex(ms: MiniSearch<KbIndexDoc>, query: string, limit: number): KbSearchHitEx[] {
+  const raw = ms.search(query, { fuzzy: 0.2, prefix: true }).slice(0, limit);
+  return raw.map((r) => {
+    const rec = r as {
+      id?: unknown;
+      path?: unknown;
+      title?: unknown;
+      score: number;
+      terms?: string[];
+      match?: Record<string, string[]>;
+    };
+    return {
+      path: String(rec.path ?? rec.id ?? ""),
+      title: String(rec.title ?? ""),
+      score: rec.score,
+      terms: rec.terms ?? [],
+      match: rec.match ?? {}
+    };
+  });
+}
+
 export async function rebuildKbIndex(cwd: string): Promise<void> {
   ensureWorkspace(cwd);
   const p = apmPaths(cwd);
-  const rels = walkKbMdRel(p.kbDocs);
+  const rels = walkKbMarkdownUnderKbRoot(p.kbRoot);
   const ms = new MiniSearch<KbIndexDoc>(kbMiniSearchOptions());
   for (const rel of rels) {
-    const abs = join(p.kbDocs, rel);
+    const abs = join(p.kbRoot, rel);
     const raw = readFileSync(abs, "utf8");
     const { title, body } = extractKbDoc(raw);
     ms.add({ path: rel, title, body });
@@ -109,21 +167,13 @@ export async function rebuildKbIndex(cwd: string): Promise<void> {
 
 export type KbSearchHit = { path: string; title: string; score: number };
 
+/** CLI `kb search`: throws when index file is missing (T7). */
 export function searchKb(cwd: string, query: string, limit = 5): KbSearchHit[] {
   ensureWorkspace(cwd);
   const p = apmPaths(cwd);
   if (!existsSync(p.kbSearchIndexGz)) {
     throw new Error("Knowledge index missing. Run `apm kb index rebuild`.");
   }
-  const buf = gunzipSync(readFileSync(p.kbSearchIndexGz));
-  const ms = MiniSearch.loadJSON<KbIndexDoc>(buf.toString("utf8"), kbMiniSearchOptions());
-  const raw = ms.search(query, { fuzzy: 0.2, prefix: true }).slice(0, limit);
-  return raw.map((r) => {
-    const rec = r as { id?: unknown; path?: unknown; title?: unknown; score: number };
-    return {
-      path: String(rec.path ?? rec.id ?? ""),
-      title: String(rec.title ?? ""),
-      score: rec.score
-    };
-  });
+  const ms = loadKbMiniSearch(cwd)!;
+  return searchKbIndex(ms, query, limit).map(({ path, title, score }) => ({ path, title, score }));
 }
