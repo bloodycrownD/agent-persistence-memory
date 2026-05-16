@@ -13,6 +13,9 @@ import {
 
 const QUERY_SECTIONS: Section[] = ["role", "persist", "dynamicDetail"];
 
+/** Max keywords on each association header line (PRD UX: 3–4). */
+const MAX_ASSOC_KEYWORDS = 4;
+
 export type ReadAssociationLine = { lineNo: number; text: string };
 
 export type ReadAssociationEntry = {
@@ -49,22 +52,46 @@ export function buildReadQueryContext(cwd: string): string {
   return parts.join("\n\n");
 }
 
-/** Query ∩ hit terms first; else up to 5 deterministic hit terms after noise filter. */
+/**
+ * Prefer longer informative tokens when trimming to the display cap.
+ * Query-order is preserved among kept terms.
+ */
+function keywordInformativeness(term: string): number {
+  if (/^[a-z0-9_]{2,}$/i.test(term)) return term.length;
+  const cjkRun = term.match(/[\u4e00-\u9fff]+/g);
+  if (cjkRun) return Math.max(...cjkRun.map((s) => s.length));
+  return term.length;
+}
+
+function capKeywords(keywords: string[]): string[] {
+  if (keywords.length <= MAX_ASSOC_KEYWORDS) return keywords;
+  const ranked = keywords
+    .map((term, index) => ({ term, index, score: keywordInformativeness(term) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+  const keep = new Set(ranked.slice(0, MAX_ASSOC_KEYWORDS).map((r) => r.index));
+  return keywords.filter((_, i) => keep.has(i));
+}
+
+/** Query ∩ hit terms (query order), capped; fallback to top hit terms after noise filter. */
 function pickKeywords(queryContext: string, hit: KbSearchHitEx): string[] {
   const queryTerms = kbTokenize(queryContext).filter((t) => !isKbNoiseToken(t));
   const hitTerms = new Set([...hit.terms, ...Object.keys(hit.match ?? {})]);
   const seen = new Set<string>();
   const keywords: string[] = [];
   for (const t of queryTerms) {
+    if (keywords.length >= MAX_ASSOC_KEYWORDS) break;
     if (hitTerms.has(t) && !seen.has(t)) {
       seen.add(t);
       keywords.push(t);
     }
   }
-  if (keywords.length > 0) return keywords;
-  const fromHit = [...hitTerms].filter((t) => !isKbNoiseToken(t)).sort().slice(0, 5);
+  if (keywords.length > 0) return capKeywords(keywords);
+  const fromHit = [...hitTerms]
+    .filter((t) => !isKbNoiseToken(t))
+    .sort((a, b) => keywordInformativeness(b) - keywordInformativeness(a) || a.localeCompare(b))
+    .slice(0, MAX_ASSOC_KEYWORDS);
   if (fromHit.length > 0) return fromHit;
-  return queryTerms.slice(0, 5);
+  return capKeywords(queryTerms.slice(0, MAX_ASSOC_KEYWORDS));
 }
 
 function lineContainsKeyword(line: string, keywords: string[]): boolean {

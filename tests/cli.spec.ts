@@ -469,6 +469,38 @@ describe("apm cli v2 layout", () => {
     expect(firstHeader).not.toMatch(/\ba\b/i);
   });
 
+  it("T-READ-ASSOC-9b: caps keywords and filters Chinese particles", async () => {
+    const dir = newTempDir();
+    await setupAssocWorkspace(dir);
+    await runCli(
+      ["role", "write", "--text", "的一个多个得之类 zzassoc_kw_cap_test 都是项目结构"],
+      dir
+    );
+    await runCli(
+      [
+        "kb",
+        "write",
+        "--path",
+        "zh-stop.md",
+        "--text",
+        "# ZH\n\nzzassoc_kw_cap_test 项目结构 apm read 联想区.\n"
+      ],
+      dir
+    );
+    await runCli(["kb", "index", "rebuild"], dir);
+    const { out } = await runCli(["read"], dir);
+    const firstHeader = assocPercentHeaders(out)[0] ?? "";
+    const pathMatch = firstHeader.match(/^\[\d+%\]\s+(\S+)\s+(.*)$/);
+    const kwPart = pathMatch?.[2] ?? "";
+    const kws = kwPart.split(/\s+/).filter(Boolean);
+    expect(kws.length).toBeLessThanOrEqual(4);
+    expect(kws).toContain("zzassoc_kw_cap_test");
+    expect(kws).not.toContain("的");
+    expect(kws).not.toContain("得");
+    expect(kws).not.toContain("一个");
+    expect(kws).not.toContain("多个");
+  });
+
   it("T-READ-ASSOC-10: missing index still prints memory and rebuild hint", async () => {
     const dir = newTempDir();
     await setupAssocWorkspace(dir);
