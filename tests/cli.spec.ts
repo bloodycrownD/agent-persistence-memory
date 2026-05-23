@@ -1,8 +1,10 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Command } from "commander";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildProgram } from "../src/index";
+import { parseFrontMatter } from "../src/storage/markdown";
 
 const tempDirs: string[] = [];
 
@@ -32,6 +34,58 @@ async function runCliFail(args: string[], cwd: string): Promise<string> {
     throw new Error("Expected command to fail.");
   } catch (e) {
     return e instanceof Error ? e.message : String(e);
+  }
+}
+
+function resolveCommand(program: Command, ...path: string[]): Command | undefined {
+  let cmd: Command = program;
+  for (const name of path) {
+    const next = cmd.commands.find((c) => c.name() === name);
+    if (!next) return undefined;
+    cmd = next;
+  }
+  return cmd;
+}
+
+/** Run CLI when commander may call process.exit (e.g. unknown subcommand, --help). */
+async function runCliWithExit(
+  args: string[],
+  cwd: string
+): Promise<{ code: number; stderr: string; out: string }> {
+  const prev = process.cwd();
+  const out: string[] = [];
+  const stderr: string[] = [];
+  const oldLog = console.log;
+  const oldErr = console.error;
+  const origWrite = process.stderr.write.bind(process.stderr);
+  const origExit = process.exit;
+  console.log = (...a: unknown[]) => out.push(a.join(" "));
+  console.error = (...a: unknown[]) => stderr.push(a.join(" "));
+  process.stderr.write = ((chunk: unknown, ...rest: unknown[]) => {
+    stderr.push(String(chunk));
+    return origWrite(chunk as never, ...(rest as never[]));
+  }) as typeof process.stderr.write;
+  let exitCode = 0;
+  process.exit = ((code?: number) => {
+    exitCode = code ?? 0;
+    throw new Error("__cli_exit__");
+  }) as typeof process.exit;
+  process.chdir(cwd);
+  try {
+    const program = buildProgram();
+    await program.parseAsync(["node", "apm", ...args], { from: "node" });
+    return { code: exitCode, stderr: stderr.join(""), out: out.join("\n") };
+  } catch (e) {
+    if (e instanceof Error && e.message === "__cli_exit__") {
+      return { code: exitCode, stderr: stderr.join(""), out: out.join("\n") };
+    }
+    throw e;
+  } finally {
+    process.chdir(prev);
+    console.log = oldLog;
+    console.error = oldErr;
+    process.stderr.write = origWrite;
+    process.exit = origExit;
   }
 }
 
@@ -78,7 +132,7 @@ describe("apm cli v2 layout", () => {
     expect(message).toMatch(/\.apm\/dynamic|dynamic/i);
   });
 
-  it("T3: dynamic uses flat show/write/edit (no detail subcommand)", async () => {
+  it("T3: dynamic uses flat show/write/replace (no detail subcommand)", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     await runCli(["config", "set", "--section", "dynamicDetail", "--min", "10", "--max", "80"], dir);
@@ -86,6 +140,9 @@ describe("apm cli v2 layout", () => {
     await runCli(["dynamic", "write", "--text", body], dir);
     const shown = await runCli(["dynamic", "show"], dir);
     expect(shown.out).toContain(`1|${body}`);
+    await runCli(["dynamic", "replace", "--old", "x", "--new", "y", "--all"], dir);
+    const after = await runCli(["dynamic", "show"], dir);
+    expect(after.out).toContain(`1|${"y".repeat(10)}`);
     const program = buildProgram();
     const dyn = program.commands.find((c) => c.name() === "dynamic");
     expect(dyn?.commands.find((c) => c.name() === "detail")).toBeUndefined();
@@ -554,21 +611,141 @@ describe("apm cli v2 layout", () => {
     expect(bodyLines.length).toBeLessThanOrEqual(3);
   });
 
-  it("validates edit --start/--end numeric inputs with clear errors", async () => {
+  it("T-REP-01: section help lists show/write/replace without edit", async () => {
+    const program = buildProgram();
+    for (const path of [["role"], ["persist"], ["dynamic"], ["kb", "dynamic"]] as const) {
+      const cmd = resolveCommand(program, ...path);
+      expect(cmd).toBeDefined();
+      const names = cmd!.commands.map((c) => c.name());
+      expect(names).toEqual(expect.arrayContaining(["show", "write", "replace"]));
+      expect(names).not.toContain("edit");
+      const help = cmd!.helpInformation();
+      expect(help).toMatch(/show/);
+      expect(help).toMatch(/write/);
+      expect(help).toMatch(/replace/);
+      expect(help).not.toMatch(/\bedit\b/);
+    }
+  });
+
+  it("T-REP-02: edit subcommand is unavailable", async () => {
     const dir = newTempDir();
+    await runCli(["init"], dir);
     await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
-    await runCli(["role", "write", "--text", "hello\nworld"], dir);
-    expect(await runCliFail(["role", "edit", "--start", "NaN", "--end", "1", "--text", "x"], dir)).toContain(
-      "Invalid --start"
+    await runCli(["role", "write", "--text", "unchanged"], dir);
+    const { code, stderr } = await runCliWithExit(
+      ["role", "edit", "--start", "1", "--end", "1", "--text", "x"],
+      dir
     );
-    expect(await runCliFail(["role", "edit", "--start", "0", "--end", "1", "--text", "x"], dir)).toContain(
-      "Invalid --start"
-    );
-    expect(await runCliFail(["role", "edit", "--start", "1.2", "--end", "1", "--text", "x"], dir)).toContain(
-      "Invalid --start"
-    );
-    expect(await runCliFail(["role", "edit", "--start", "1", "--end", "Infinity", "--text", "x"], dir)).toContain(
-      "Invalid --end"
-    );
+    expect(code).not.toBe(0);
+    expect(stderr).toMatch(/unknown command/i);
+    const { out } = await runCli(["role", "show"], dir);
+    expect(out).toContain("1|unchanged");
+  });
+
+  it("T-REP-03: replace substitutes first occurrence only", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
+    await runCli(["role", "write", "--text", "alpha beta alpha"], dir);
+    await runCli(["role", "replace", "--old", "alpha", "--new", "X"], dir);
+    const { out } = await runCli(["role", "show"], dir);
+    expect(out).toContain("1|X beta alpha");
+  });
+
+  it("T-REP-04: replace fails when --old not found", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
+    await runCli(["role", "write", "--text", "hello"], dir);
+    const err = await runCliFail(["role", "replace", "--old", "missing", "--new", "Y"], dir);
+    expect(err).toContain("not found");
+    const { out } = await runCli(["role", "show"], dir);
+    expect(out).toContain("1|hello");
+  });
+
+  it("T-REP-05: replace without --all changes only first match", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
+    await runCli(["role", "write", "--text", "aa"], dir);
+    await runCli(["role", "replace", "--old", "a", "--new", "b"], dir);
+    const { out } = await runCli(["role", "show"], dir);
+    expect(out).toContain("1|ba");
+  });
+
+  it("T-REP-06: replace --all substitutes every occurrence", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
+    await runCli(["role", "write", "--text", "a|a|a"], dir);
+    await runCli(["role", "replace", "--old", "a", "--new", "b", "--all"], dir);
+    const { out } = await runCli(["role", "show"], dir);
+    expect(out).toContain("1|b|b|b");
+  });
+
+  it("T-REP-07: replace --all still fails when --old not found", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
+    await runCli(["role", "write", "--text", "hello"], dir);
+    const err = await runCliFail(["role", "replace", "--old", "missing", "--new", "Y", "--all"], dir);
+    expect(err).toContain("not found");
+    const { out } = await runCli(["role", "show"], dir);
+    expect(out).toContain("1|hello");
+  });
+
+  it("T-REP-08: replace rejects empty --old", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
+    await runCli(["role", "write", "--text", "hello"], dir);
+    const err = await runCliFail(["role", "replace", "--old", "", "--new", "x"], dir);
+    expect(err).toContain("must not be empty");
+  });
+
+  it("T-REP-09: replace respects section limits and leaves file unchanged on failure", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "5"], dir);
+    await runCli(["role", "write", "--text", "abcde"], dir);
+    const err = await runCliFail(["role", "replace", "--old", "a", "--new", "ZZZZZ"], dir);
+    expect(err).toMatch(/length must be|chars/i);
+    const { out } = await runCli(["role", "show"], dir);
+    expect(out).toContain("1|abcde");
+  });
+
+  it("T-REP-10: successful replace updates updatedAt but not createdAt", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
+    await runCli(["role", "write", "--text", "alpha beta alpha"], dir);
+    const rolePath = join(dir, ".apm", "memory", "role.md");
+    const staleUpdatedAt = "2020-01-01 00:00:00";
+    const raw = readFileSync(rolePath, "utf8");
+    writeFileSync(rolePath, raw.replace(/updatedAt: "[^"]+"/, `updatedAt: "${staleUpdatedAt}"`), "utf8");
+    const before = parseFrontMatter(readFileSync(rolePath, "utf8"));
+    await runCli(["role", "replace", "--old", "alpha", "--new", "X"], dir);
+    const after = parseFrontMatter(readFileSync(rolePath, "utf8"));
+    expect(after.meta).toMatchObject({ createdAt: (before.meta as { createdAt: string }).createdAt });
+    expect((after.meta as { updatedAt: string }).updatedAt).not.toBe(staleUpdatedAt);
+  });
+
+  it("T-REP-11: replace behaves consistently across all four sections", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    const cases = [
+      { cmd: ["role"] as const, section: "role", path: join(dir, ".apm", "memory", "role.md") },
+      { cmd: ["persist"] as const, section: "persist", path: join(dir, ".apm", "memory", "persist.md") },
+      { cmd: ["dynamic"] as const, section: "dynamicDetail", path: join(dir, ".apm", "memory", "dynamic.md") },
+      { cmd: ["kb", "dynamic"] as const, section: "kbDynamicDetail", path: join(dir, ".apm", "kb", "dynamic", "detail.md") }
+    ] as const;
+    for (const { cmd, section, path } of cases) {
+      await runCli(["config", "set", "--section", section, "--min", "1", "--max", "100"], dir);
+      await runCli([...cmd, "write", "--text", "alpha beta alpha"], dir);
+      await runCli([...cmd, "replace", "--old", "alpha", "--new", "X"], dir);
+      const { out } = await runCli([...cmd, "show"], dir);
+      expect(out).toContain("1|X beta alpha");
+      expect(parseFrontMatter(readFileSync(path, "utf8")).content).toBe("X beta alpha");
+    }
   });
 });

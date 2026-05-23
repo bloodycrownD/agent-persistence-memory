@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { nowLocal } from "../core/time";
-import { countChars, validateRange } from "../core/validate";
+import { applySubstringReplace } from "../core/substring-replace";
+import { countChars } from "../core/validate";
 import { formatZodError } from "../core/schema-errors";
 import { renderFrontMatter, parseFrontMatter } from "../storage/markdown";
 import { apmPaths } from "../storage/paths";
@@ -98,10 +99,15 @@ export async function writeSection(cwd: string, section: Section, text: string):
   });
 }
 
-export async function editSection(cwd: string, section: Section, start: number, end: number, text: string): Promise<void> {
-  const p = sectionPath(cwd, section);
-  const lines = readSectionFile(p).content.split("\n");
-  validateRange(lines, start, end);
-  lines.splice(start - 1, end - start + 1, ...text.split("\n"));
-  await writeSection(cwd, section, lines.join("\n"));
+/** Replace an exact substring in a section body, then persist via writeSection (limits, lock, atomic write). */
+export async function replaceSection(
+  cwd: string,
+  section: Section,
+  oldText: string,
+  newText: string,
+  replaceAll: boolean
+): Promise<void> {
+  const content = readSectionContent(cwd, section);
+  const next = applySubstringReplace(content, oldText, newText, replaceAll);
+  await writeSection(cwd, section, next);
 }

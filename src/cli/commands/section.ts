@@ -1,8 +1,7 @@
 import type { Command } from "commander";
 import { ensureWorkspace } from "../../storage/paths";
 import { toLineNumbered } from "../../formatters/line-number";
-import { parsePositiveInt } from "../../core/validate";
-import { editSection, readSectionContent, writeSection } from "../../services/sections-service";
+import { readSectionContent, replaceSection, writeSection } from "../../services/sections-service";
 import type { Section } from "../../schemas/config";
 
 export function registerSectionCommands(cmd: Command, section: Section): void {
@@ -20,17 +19,15 @@ export function registerSectionCommands(cmd: Command, section: Section): void {
   });
 
   cmd
-    .command("edit")
-    .requiredOption("--start <start>")
-    .requiredOption("--end <end>")
-    .requiredOption("--text <text>")
-    .action(async (opts: { start: string; end: string; text: string }) => {
+    .command("replace")
+    .description("Replace --old substring in section body (first occurrence by default)")
+    .requiredOption("--old <old>", "Exact substring to find")
+    .requiredOption("--new <new>", "Replacement text (may be empty)")
+    .option("--all", "Replace all occurrences of --old")
+    .action(async (opts: { old: string; new: string; all?: boolean }) => {
       const cwd = process.cwd();
       ensureWorkspace(cwd);
-      const start = parsePositiveInt("--start", opts.start);
-      const end = parsePositiveInt("--end", opts.end);
-      await editSection(cwd, section, start, end, opts.text);
+      await replaceSection(cwd, section, opts.old, opts.new, Boolean(opts.all));
       console.log("OK");
     });
 }
-
