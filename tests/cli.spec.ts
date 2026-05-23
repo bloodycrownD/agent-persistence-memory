@@ -714,6 +714,17 @@ describe("apm cli v2 layout", () => {
     expect(out).toContain("1|abcde");
   });
 
+  it("T-REP-09b: replace rejects result below section min and leaves file unchanged", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    await runCli(["config", "set", "--section", "role", "--min", "3", "--max", "100"], dir);
+    await runCli(["role", "write", "--text", "abcde"], dir);
+    const err = await runCliFail(["role", "replace", "--old", "abcd", "--new", ""], dir);
+    expect(err).toMatch(/length must be|chars/i);
+    const { out } = await runCli(["role", "show"], dir);
+    expect(out).toContain("1|abcde");
+  });
+
   it("T-REP-10: successful replace updates updatedAt but not createdAt", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
