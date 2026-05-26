@@ -218,5 +218,6 @@ export function formatAssociationSection(result: ReadAssociationResult): string 
   if (result.summary.length > 0) {
     sections.push(result.summary.map((e) => formatAssocHeader(e)).join("\n"));
   }
-  return ["# 联想区", "", ...sections].join("\n");
+  const body = sections.length > 0 ? sections.join("\n\n") : "";
+  return body ? `# 联想区\n\n${body}` : "# 联想区";
 }

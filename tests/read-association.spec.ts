@@ -295,6 +295,10 @@ describe("apm read association area", () => {
     const assoc = out.slice(out.indexOf("# 联想区"));
     const headers = assocPercentHeaders(assoc);
     expect(headers.length).toBeGreaterThanOrEqual(6);
+    const h4 = headers[4];
+    const h5 = headers[5];
+    const betweenTiers = assoc.slice(assoc.indexOf(h4) + h4.length, assoc.indexOf(h5));
+    expect(betweenTiers.endsWith("\n\n")).toBe(true);
     for (let i = 5; i < headers.length - 1; i++) {
       const h0 = headers[i];
       const h1 = headers[i + 1];
