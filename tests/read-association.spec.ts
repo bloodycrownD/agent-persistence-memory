@@ -1,6 +1,10 @@
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+  MAX_ASSOC_DETAIL_LINE_LEN,
+  truncateAssocDisplayLine
+} from "../src/services/read-association-service";
 import { newTempDir, runCli } from "./helpers/cli-harness";
 import {
   assocEntryBlocks,
@@ -209,7 +213,8 @@ describe("apm read association area", () => {
     await runCli(["kb", "index", "rebuild"], dir);
     const { out } = await runCli(["read"], dir);
     const firstHeader = assocPercentHeaders(out)[0] ?? "";
-    const pathMatch = firstHeader.match(/^\[\d+%\]\s+(\S+)\s+(.*)$/);
+    expect(firstHeader).toMatch(/ 关键词：/);
+    const pathMatch = firstHeader.match(/^\[\d+%\]\s+(\S+)\s+关键词：(.*)$/);
     const kwPart = pathMatch?.[2] ?? "";
     const kws = kwPart.split(/\s+/).filter(Boolean);
     expect(kws.length).toBeLessThanOrEqual(4);
@@ -271,5 +276,120 @@ describe("apm read association area", () => {
     const bodyLines = entryMatch![2].match(/^\d+\|/gm) ?? [];
     expect(bodyLines.length).toBeGreaterThan(0);
     expect(bodyLines.length).toBeLessThanOrEqual(3);
+  });
+
+  it("T-READ-ASSOC-13: summary tier headers are compact (single newline between)", async () => {
+    const dir = newTempDir();
+    await setupAssocWorkspace(dir);
+    const kw = "zzassoc_compact_summary";
+    await runCli(["role", "write", "--text", kw], dir);
+    for (let i = 0; i < 12; i++) {
+      await runCli(
+        ["kb", "write", "--path", `compact${i}.md`, "--text", `# C${i}\n\n${kw} item ${i}.\n`],
+        dir
+      );
+    }
+    trimKbIndexFixtures(dir);
+    await runCli(["kb", "index", "rebuild"], dir);
+    const { out } = await runCli(["read"], dir);
+    const assoc = out.slice(out.indexOf("# 联想区"));
+    const headers = assocPercentHeaders(assoc);
+    expect(headers.length).toBeGreaterThanOrEqual(6);
+    for (let i = 5; i < headers.length - 1; i++) {
+      const h0 = headers[i];
+      const h1 = headers[i + 1];
+      const gap = assoc.indexOf(h1) - assoc.indexOf(h0) - h0.length;
+      expect(gap).toBe(1);
+    }
+  });
+
+  it("T-READ-ASSOC-14: association headers include 关键词： label", async () => {
+    const dir = newTempDir();
+    await setupAssocWorkspace(dir);
+    const kw = "zzassoc_kw_label";
+    await runCli(["role", "write", "--text", kw], dir);
+    await runCli(["kb", "write", "--path", "label.md", "--text", `# Label\n\n${kw} here.\n`], dir);
+    await runCli(["kb", "index", "rebuild"], dir);
+    const { out } = await runCli(["read"], dir);
+    const headers = assocPercentHeaders(out);
+    expect(headers.length).toBeGreaterThan(0);
+    for (const h of headers) {
+      if (h.includes("label.md")) {
+        expect(h).toMatch(/ 关键词：/);
+        return;
+      }
+    }
+    expect(headers.some((h) => / 关键词：/.test(h))).toBe(true);
+  });
+
+  it("T-READ-ASSOC-15: long detail lines are truncated with ...", async () => {
+    const dir = newTempDir();
+    await setupAssocWorkspace(dir);
+    const kw = "zzassoc_long_line_kw";
+    const longBody = "x".repeat(130);
+    await runCli(["role", "write", "--text", kw], dir);
+    await runCli(
+      [
+        "kb",
+        "write",
+        "--path",
+        "longline.md",
+        "--text",
+        `# Long\n\n${kw} ${longBody}\n`
+      ],
+      dir
+    );
+    trimKbIndexFixtures(dir);
+    await runCli(["kb", "index", "rebuild"], dir);
+    const { out } = await runCli(["read"], dir);
+    const assoc = out.slice(out.indexOf("# 联想区"));
+    const detailLine = assoc.split("\n").find((line) => /^\d+\|.*zzassoc_long_line_kw/.test(line));
+    expect(detailLine).toBeTruthy();
+    expect(detailLine!.endsWith("...")).toBe(true);
+    expect(detailLine!.length).toBeLessThanOrEqual(MAX_ASSOC_DETAIL_LINE_LEN + 3);
+  });
+
+  it("T-READ-ASSOC-16: short detail lines are not truncated", async () => {
+    const dir = newTempDir();
+    await setupAssocWorkspace(dir);
+    const kw = "zzassoc_short_line_kw";
+    await runCli(["role", "write", "--text", kw], dir);
+    await runCli(
+      ["kb", "write", "--path", "shortline.md", "--text", `# Short\n\nshort ${kw} body.\n`],
+      dir
+    );
+    trimKbIndexFixtures(dir);
+    await runCli(["kb", "index", "rebuild"], dir);
+    const { out } = await runCli(["read"], dir);
+    const assoc = out.slice(out.indexOf("# 联想区"));
+    const detailLines = assoc.split("\n").filter((line) => /^\d+\|/.test(line));
+    expect(detailLines.length).toBeGreaterThan(0);
+    for (const line of detailLines) {
+      expect(line.endsWith("...")).toBe(false);
+    }
+  });
+});
+
+describe("truncateAssocDisplayLine", () => {
+  it("appends ... when line exceeds maxLen", () => {
+    const line = "a".repeat(121);
+    const out = truncateAssocDisplayLine(line);
+    expect(out.length).toBe(123);
+    expect(out.endsWith("...")).toBe(true);
+  });
+
+  it("leaves line unchanged at exactly maxLen", () => {
+    const line = "a".repeat(120);
+    expect(truncateAssocDisplayLine(line)).toBe(line);
+    expect(truncateAssocDisplayLine(line).endsWith("...")).toBe(false);
+  });
+
+  it("truncates full lineNo|text display line", () => {
+    const prefix = "12|";
+    const line = prefix + "b".repeat(200);
+    const out = truncateAssocDisplayLine(line);
+    expect(out.startsWith(prefix)).toBe(true);
+    expect(out.length).toBe(MAX_ASSOC_DETAIL_LINE_LEN + 3);
+    expect(out.endsWith("...")).toBe(true);
   });
 });
