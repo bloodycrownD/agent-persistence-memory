@@ -16,6 +16,9 @@ const QUERY_SECTIONS: Section[] = ["role", "persist", "dynamicDetail"];
 /** Max keywords on each association header line (PRD UX: 3–4). */
 const MAX_ASSOC_KEYWORDS = 4;
 
+/** Max display length for a detail line (`lineNo|text`); overflow gets `...`. */
+export const MAX_ASSOC_DETAIL_LINE_LEN = 120;
+
 export type ReadAssociationLine = { lineNo: number; text: string };
 
 export type ReadAssociationEntry = {
@@ -172,11 +175,29 @@ export function computeReadAssociation(cwd: string): ReadAssociationResult {
   return { status: "ok", detailed, summary };
 }
 
-function formatEntry(entry: ReadAssociationEntry, withLines: boolean): string {
-  const kw = entry.keywords.join(" ");
-  const header = `[${entry.matchPercent}%] ${entry.path}${kw ? ` ${kw}` : ""}`;
-  if (!withLines || !entry.lines?.length) return header;
-  return [header, ...entry.lines.map((l) => `${l.lineNo}|${l.text}`)].join("\n");
+/** Truncate full `lineNo|text` display lines for terminal readability. */
+export function truncateAssocDisplayLine(
+  line: string,
+  maxLen = MAX_ASSOC_DETAIL_LINE_LEN
+): string {
+  if (line.length <= maxLen) return line;
+  return line.slice(0, maxLen) + "...";
+}
+
+/** `[n%] path` with optional `关键词：kw1 kw2` suffix. */
+export function formatAssocHeader(entry: ReadAssociationEntry): string {
+  const base = `[${entry.matchPercent}%] ${entry.path}`;
+  if (entry.keywords.length === 0) return base;
+  return `${base} 关键词：${entry.keywords.join(" ")}`;
+}
+
+function formatDetailedEntry(entry: ReadAssociationEntry): string {
+  const header = formatAssocHeader(entry);
+  if (!entry.lines?.length) return header;
+  const displayLines = entry.lines.map((l) =>
+    truncateAssocDisplayLine(`${l.lineNo}|${l.text}`)
+  );
+  return [header, ...displayLines].join("\n");
 }
 
 /**
@@ -192,10 +213,10 @@ export function formatAssociationSection(result: ReadAssociationResult): string 
 
   const sections: string[] = [];
   if (result.detailed.length > 0) {
-    sections.push(result.detailed.map((e) => formatEntry(e, true)).join("\n\n"));
+    sections.push(result.detailed.map((e) => formatDetailedEntry(e)).join("\n\n"));
   }
   if (result.summary.length > 0) {
-    sections.push(result.summary.map((e) => formatEntry(e, false)).join("\n\n"));
+    sections.push(result.summary.map((e) => formatAssocHeader(e)).join("\n"));
   }
   return ["# 联想区", "", ...sections].join("\n");
 }
