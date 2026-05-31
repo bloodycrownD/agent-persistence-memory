@@ -1,6 +1,6 @@
 ---
 name: apm-usage
-description: 指导 Agent 与开发者使用本仓库 APM CLI（init、read、role/persist/dynamic、kb 导入/索引/联想区）。在用户提到 apm、外置记忆、.apm、apm read、知识库、会话恢复或 Agent 初始化上下文时使用。
+description: 指导 Agent 与开发者使用 APM CLI（init、read、role/persist/dynamic、kb 导入/索引/联想区）。在用户提到 apm、外置记忆、.apm、apm read、知识库、会话恢复或 Agent 初始化上下文时使用。
 disable-model-invocation: true
 ---
 
@@ -8,68 +8,63 @@ disable-model-invocation: true
 
 ## 何时使用
 
-- Agent **会话开始**：用 `apm read` 拉取角色、持久记忆、动态记忆与知识库联想。
-- **任务进行中**：用 `apm dynamic write/replace` 更新当前进度；重要结论写入 `apm persist`。
-- **沉淀文档**：将 Markdown 导入知识库并重建索引。
-- **改 APM 源码**：遵守下文开发约束，并跑 `npm test`。
+- **会话开始**：`apm read` 拉取角色、持久记忆、动态记忆与知识库联想。
+- **任务进行中**：`apm dynamic write/replace` 更新当前任务；稳定结论写入 `apm persist`。
+- **沉淀文档**：把 Markdown 放进知识库并保证可检索。
 
 ## 前置条件
 
 - 在**项目根目录**（含或将创建 `.apm/` 的目录）执行命令。
-- 本地需已 `npm run build`；开发调试可用 `npx tsx src/index.ts <子命令>`。
-- 二进制入口：`apm` 或 `npx apm`（`package.json` 的 `bin`）。
+- 已安装本仓库 CLI：`apm` 或 `npx apm`（仓库内需先 `npm run build`）。
 
 ## 工作区布局（v2）
 
 ```
 .apm/
-  config.json        # limits + initializedAt / updatedAt / lastReadAt
+  config.json        # 各段长度 limits；工作区元数据（初始化/更新时间等）
   memory/
     role.md          # 角色
     persist.md       # 持久记忆
     dynamic.md       # 动态记忆（当前任务）
   kb/
-    docs/            # 知识库 Markdown 树
+    docs/            # 知识库 Markdown（可嵌套目录）
     dynamic/detail.md
-    archive/         # dynamic 归档副本
+    archive/         # dynamic 历史归档（write 时自动写入）
     index/
-      search.json.gz # 检索索引（gzip + MiniSearch JSON）
+      search.json.gz # 检索索引
 ```
 
-- **禁止**依赖旧布局（`.apm/role.md`、`.apm/persistence/`、`.apm/dynamic/`）；检测到旧树会报错并提示 `apm init`。
-- 路径一律通过代码里的 `apmPaths()` 解析，**不要**硬编码 `.apm` 内部结构。
+- 不要使用旧布局（`.apm/role.md`、`.apm/persistence/`、`.apm/dynamic/`）；若报错，备份后 `apm init`。
+- 知识库路径写相对 `kb/docs/` 时，命令里用 `docs/...` 或 `Iterations/foo/prd.md` 等形式（见 `apm kb write --path`）。
 
 ## Agent 标准流程
 
 ```text
-1. apm init                    # 首次或空目录（幂等）
-2. apm read                    # 初始化上下文（必做）
+1. apm init                 # 首次（幂等）
+2. apm read                 # 拉上下文（必做）
 3. … 执行任务 …
-4. apm dynamic write --text …  # 更新进度/下一步
-5. （可选）apm persist write   # 写入长期规则/结论
-6. （可选）kb 导入 + 索引重建  # 见下文
+4. apm dynamic write --text "…"   # 更新当前任务（见下文归档规则）
+5. （可选）apm persist write      # 长期规则/结论
+6. （可选）apm kb import / write  # 沉淀文档（注意是否要 rebuild，见下表）
 ```
 
-### `apm read` 输出结构
+### `apm read` 输出
 
-按顺序输出（**无内容的区块会省略**）：
+按顺序输出（**无内容则省略该段**）：
 
-1. `# 角色` — `memory/role.md` 正文（已去 YAML front matter）
+1. `# 角色` — `memory/role.md` 正文（已去 YAML）
 2. `# 持久记忆` — `memory/persist.md`
 3. `# 动态记忆` — `memory/dynamic.md`
-4. `# 联想区` — 基于 **role + persist + dynamic** 合并正文检索 `kb/`（**不含** `kb/index/`）
+4. `# 联想区` — 用 role+persist+dynamic 正文检索 `kb/`（不含 `index/`）
 
-**联想区规则（摘要）：**
+**联想区格式（摘要）：**
 
 | 项 | 说明 |
 |----|------|
-| 详细区 | 最多 **5** 条：首行 `[匹配率%] kb相对路径 关键词：kw1 …(≤4)` + 最多 **3** 行 `行号\|正文`（超长截断为 120 字符 + `...`）；条间空一行 |
-| 简略区 | 最多 **10** 条：仅首行（同头部格式），条间无空行；与详细区之间空一行 |
-| 匹配率 | 当次 Top 结果内 BM25+ 分数归一化为 0–100 整数 |
-| 无命中 | **不输出** `# 联想区` |
-| 无索引 | 仍输出 `# 联想区` + 提示执行 `apm kb index rebuild` |
-
-路径示例：`docs/Iterations/foo/spec.md`、`archive/dynamic-20260516-120000.md`。
+| 详细区 | 最多 5 条：`[匹配率%] 路径 关键词：…` + 最多 3 行 `行号\|正文`（过长截断）；条间空一行 |
+| 简略区 | 最多 10 条：仅头部一行；条间无空行；与详细区之间空一行 |
+| 无命中 | 不输出联想区 |
+| 无索引 | 输出联想区 + 提示 `apm kb index rebuild` |
 
 ## 常用命令
 
@@ -80,120 +75,112 @@ apm init
 apm read
 ```
 
-### 记忆三段（结构相同）
+### 记忆三段（role / persist / dynamic）
 
-子命令：`show` | `write --text <正文>` | `replace --old <原文> --new <新文> [--all]`
+子命令相同：`show` | `write --text <正文>` | `replace --old <原文> --new <新文> [--all]`
 
 ```bash
 apm role show
 apm role write --text "…"
-apm role replace --old "旧片段" --new "新片段"
+apm role replace --old "旧" --new "新"
 apm persist write --text "…"
 apm dynamic write --text "…"
-apm dynamic replace --old "下一步：…" --new "下一步：…"
+apm dynamic replace --old "…" --new "…"
 ```
 
-- 局部修改：从 `show` / `read` 复制精确子串作为 `--old`；默认只替换**第一次**出现，多处同文加 `--all`。
-- 全量覆盖仍用 `write`。
+**使用要点：**
 
-- 正文长度受 `apm config` 中各 section 的 `min`/`max` 约束。
-- Section 文件带 YAML front matter（`createdAt` / `updatedAt`），**不要**在 `read` 输出里手写 front matter。
-- **`--text` / `--old` / `--new` 转义**（`role` / `persist` / `dynamic` / `kb write` / `kb dynamic` 均适用）：`\n` 换行、`\t` 制表、`\r` 回车、`\\` 反斜杠；要字面量 `\n` 写 `\\n`。Shell 已传入的真实换行符会原样保留。
+- `replace` 的 `--old` 须与 `show`/`read` 正文**完全一致**（原样子串）；多处相同加 `--all`。
+- 全量覆盖用 `write`；长度受 `apm config` 的 min/max 约束。
+- **不要**在写入内容里手写 YAML front matter（文件里由 CLI 维护）。
+- **参数转义**（`--text` / `--old` / `--new`，含 `kb write`）：`\n` 换行、`\t` 制表、`\r` 回车、`\\` 反斜杠；字面量 `\n` 写 `\\n`。
 
-### 动态记忆归档
+### 动态记忆与归档
 
-- **`apm dynamic write`** 覆盖前若当前正文非空，会自动将整份 `memory/dynamic.md`（含 front matter）复制到 `kb/archive/dynamic-YYYY-MM-DD-HHmmss.md`，并与本次 write 一并触发索引 rebuild。
-- **清空**：`apm dynamic write --text ""`（绕过 `min` 限制；正文已空则不归档；正文非空则先归档再清空）。
-- **`apm dynamic replace`** 不自动归档，但成功后仍会 rebuild 索引。
-- 已移除 `apm dynamic archive` / `apm dynamic clear`（请改用 `write` / `write --text ""`）。
+| 操作 | 行为 |
+|------|------|
+| `apm dynamic write --text "新任务"` | 若当前 dynamic 正文非空，**先**复制到 `kb/archive/dynamic-时间戳.md`，再写入新正文 |
+| `apm dynamic write --text ""` | 清空 dynamic（正文已空则不归档；非空则先归档再清空） |
+| `apm dynamic replace` | 不自动归档，只改当前正文 |
+
+已无 `apm dynamic archive` / `apm dynamic clear`，请用上面两种方式。
 
 ### 知识库
 
 ```bash
-apm kb import --from <目录>    # 复制目录下全部 .md 到 kb/docs/，并自动 rebuild 索引
-apm kb write --path <相对路径> --text "<内容>"   # 写入 kb/docs/（路径须 .md，且在 docs 下）
-apm kb search --q "<查询>"     # BM25+ 检索，默认 Top 5
-apm kb index rebuild           # 扫描 kb/ 下除 index/ 外全部 .md 并写 search.json.gz
-apm kb dynamic show|write|replace # 对应 kb/dynamic/detail.md
+apm kb import --from <目录>              # 导入 .md 到 kb/docs/，结束后自动 rebuild
+apm kb write --path <相对docs的路径.md> --text "…"
+apm kb search --q "<查询>"
+apm kb index rebuild                     # 全量重建索引
+apm kb dynamic show|write|replace        # kb/dynamic/detail.md
 ```
 
-**索引 rebuild 规则：**
+**何时需要手动 `apm kb index rebuild`：**
 
-| 操作 | 是否自动 `kb index rebuild` |
-|------|---------------------------|
-| `role` / `persist` / `dynamic` 的 `write`、`replace` | **是** |
-| `apm dynamic write`（含自动 archive） | **是** |
-| `apm kb import --from` | **是**（导入结束后） |
-| `apm kb write` | **否**（需手动 `apm kb index rebuild`） |
-| `apm kb dynamic` 的 `write` / `replace` | **否** |
-
-- 索引路径相对 `kb/`（如 `docs/foo.md`、`archive/dynamic-....md`）。
-- 搜索/联想异常时，可先手动执行 **`apm kb index rebuild`**。
+| 操作 | 自动 rebuild |
+|------|----------------|
+| `role` / `persist` / `dynamic` 的 write、replace | 是 |
+| `apm dynamic write` | 是 |
+| `apm kb import` | 是 |
+| `apm kb write` | **否** → 写完请执行 `rebuild` |
+| `apm kb dynamic` 的 write、replace | **否** |
 
 ### 配置
-
-`.apm/config.json` 合并了原 `status.json`：除各段 `limits` 外，还有 `initializedAt`、`updatedAt`、`lastReadAt`（`apm read` 暂不更新 `lastReadAt`）。旧工作区若仍有 `status.json`，首次命令会自动迁入 `config.json` 并删除 `status.json`。
 
 ```bash
 apm config show
 apm config set --section role|persist|dynamicDetail|kbDynamicDetail --min <n> --max <n>
 ```
 
+工作区只需维护 `.apm/config.json`（旧版单独的 `status.json` 会在首次使用时自动合并进 `config.json`）。
+
 ## 典型场景
 
-### 将 docs 导入知识库做联调
+### 新会话恢复
+
+1. `apm read`
+2. 读「动态记忆」里的当前任务 / 下一步
+3. 参考「联想区」打开相关 `kb/docs` 或 `kb/archive` 文档
+
+### 切换任务（换一版 dynamic）
 
 ```bash
-npm run build
-apm kb import --from docs
-apm read
+apm dynamic write --text "新任务：…\n下一步：…"
 ```
 
-### 会话恢复（Agent）
+旧版 dynamic 会自动进 `kb/archive/`，之后 `apm read` 的联想可搜到归档内容。
 
-1. `apm read` 获取角色 + 规则 + 当前任务 + 相关文档联想。
-2. 根据「动态记忆」的「下一步」继续执行。
-3. 阶段结束更新 `apm dynamic write`；稳定知识写入 `apm persist`。
-
-### 测试/CI 前
+### 把迭代文档放进知识库
 
 ```bash
-npm run build
-npm test
+apm kb write --path Iterations/功能名/prd.md --text "…"
+apm kb index rebuild    # kb write 不会自动 rebuild
+apm read                # 验证联想区是否命中
 ```
 
-- 联想区：`tests/read-association.spec.ts`（`T-READ-ASSOC-*`）
-- 布局/归档/转义/索引：`tests/layout.spec.ts`、`tests/cli-text-escape.spec.ts`、`tests/config-merge.spec.ts`
+或批量：`apm kb import --from docs`（会自动 rebuild）。
 
-## 修改 APM 代码时的约束
+### 多行正文（单行命令）
 
-1. **路径**：只用 `apmPaths()` / `resolveKbDocPath` / `resolveKbIndexedPath`。
-2. **写入**：`atomicWrite` + `withGlobalLock` + `serialWrite`。
-3. **检索**：索引与联想共用 `kb-index-service`（`kbTokenize`、MiniSearch）；联想关键词展示走 `kb-stopwords`（与索引分词分离）。
-4. **测试**：改动 CLI 行为须更新对应用例（`tests/layout.spec.ts`、`tests/replace.spec.ts`、`tests/read-association.spec.ts` 等）。
-5. **迭代文档**：新功能 PRD/SPEC 放在 `docs/Iterations/<名称>/`。
+```bash
+apm dynamic write --text "第一行\n第二行\n第三行"
+```
 
-## 与 `memory/` 目录的区别
+## 与仓库 `memory/` 目录的区别
 
 | 位置 | 用途 |
 |------|------|
-| `.apm/memory/*.md` | **运行时**外置记忆，由 `apm` CLI 读写 |
-| `memory/persistence/`、`memory/tmp/` | **仓库内**人工归档记录（见 `memory-records` skill），**不**参与 `apm read` 联想索引 |
-
-二者不要混用路径。
+| `.apm/memory/*.md` | **APM 运行时记忆**，由 CLI 读写，`apm read` 使用 |
+| 仓库根 `memory/` 等 | 人工/项目记录，**不**参与 `apm read`，勿与 `.apm` 混淆 |
 
 ## 故障排查
 
 | 现象 | 处理 |
 |------|------|
-| `Old .apm layout detected` | 备份后删除旧树，`apm init` |
+| `Old .apm layout detected` | 备份后删旧 `.apm`，`apm init` |
 | `Incomplete .apm workspace` | `apm init` |
 | `Knowledge index missing` | `apm kb index rebuild` |
-| 联想区无结果 | 确认记忆正文与 kb 文档有共同检索词；执行 rebuild |
-| section 长度报错 | `apm config set` 调大 `max` 或缩短正文 |
-
-## 延伸阅读
-
-- 联想区：`.apm/kb/docs/Iterations/联想区格式优化/`、`apm-read-association-area/`
-- 动态写时归档：`.apm/kb/docs/Iterations/动态记忆写时归档/prd.md`、`spec.md`
-- kb 布局：`.apm/kb/docs/Iterations/apm-kb-memory-layout-init/spec.md`
+| 联想区无结果 | 记忆与 kb 文档要有共同关键词；`rebuild` |
+| `kb write` 后搜不到 | 执行 `apm kb index rebuild` |
+| 长度报错 | `apm config set` 调大 `max` 或缩短正文 |
+| `--text` 里 `\n` 没换行 | 确认传的是字面量 `\`+`n`（CLI 会转义）；或改用真实多行参数 |
