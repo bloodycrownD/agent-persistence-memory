@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildProgram } from "../src/index";
-import { newTempDir, runCli, runCliFail } from "./helpers/cli-harness";
+import { newTempDir, runCli, runCliFail, runCliWithExit } from "./helpers/cli-harness";
 
 describe("apm cli v2 layout", () => {
   it("T1: init creates full v2 tree", async () => {
@@ -16,6 +16,11 @@ describe("apm cli v2 layout", () => {
     expect(existsSync(join(dir, ".apm", "kb", "dynamic", "detail.md"))).toBe(true);
     expect(existsSync(join(dir, ".apm", "kb", "index"))).toBe(true);
     expect(existsSync(join(dir, ".apm", "kb", "index", "search.json.gz"))).toBe(false);
+    expect(existsSync(join(dir, ".apm", "status.json"))).toBe(false);
+    const cfg = JSON.parse(readFileSync(join(dir, ".apm", "config.json"), "utf8"));
+    expect(cfg.limits).toBeTruthy();
+    expect(cfg.initializedAt).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    expect(cfg.lastReadAt).toBeNull();
   });
 
   it("T2: legacy layout is rejected with guidance", async () => {
@@ -51,34 +56,53 @@ describe("apm cli v2 layout", () => {
     expect(dyn?.commands.find((c) => c.name() === "detail")).toBeUndefined();
   });
 
-  it("T4: dynamic archive writes timestamped copy under memory/archive", async () => {
+  it("T4: dynamic write auto-archives previous content to kb/archive", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     await runCli(["config", "set", "--section", "dynamicDetail", "--min", "10", "--max", "200"], dir);
     const body = "y".repeat(12);
     await runCli(["dynamic", "write", "--text", body], dir);
-    await runCli(["dynamic", "archive"], dir);
+    const beforeSecond = readFileSync(join(dir, ".apm", "memory", "dynamic.md"), "utf8");
+    await runCli(["dynamic", "write", "--text", "n".repeat(12)], dir);
     const archDir = join(dir, ".apm", "kb", "archive");
     const files = readdirSync(archDir).filter((f) => /^dynamic-\d{4}-\d{2}-\d{2}-\d{6}\.md$/.test(f));
-    expect(files.length).toBeGreaterThanOrEqual(1);
+    expect(files.length).toBe(1);
     const archived = readFileSync(join(archDir, files[0]), "utf8");
-    expect(archived).toBe(readFileSync(join(dir, ".apm", "memory", "dynamic.md"), "utf8"));
+    expect(archived).toBe(beforeSecond);
     expect(archived).toContain(body);
   });
 
-  it("T5: dynamic clear resets active file; archive count unchanged", async () => {
+  it("T5: dynamic write --text empty clears; archives non-empty first", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     await runCli(["config", "set", "--section", "dynamicDetail", "--min", "10", "--max", "200"], dir);
     await runCli(["dynamic", "write", "--text", "z".repeat(12)], dir);
-    await runCli(["dynamic", "archive"], dir);
     const archDir = join(dir, ".apm", "kb", "archive");
     const n = readdirSync(archDir).length;
-    await runCli(["dynamic", "clear"], dir);
-    expect(readdirSync(archDir).length).toBe(n);
+    await runCli(["dynamic", "write", "--text", ""], dir);
+    expect(readdirSync(archDir).length).toBe(n + 1);
     const cleared = readFileSync(join(dir, ".apm", "memory", "dynamic.md"), "utf8");
     expect(cleared.startsWith("---\n")).toBe(true);
     expect(cleared.split("\n---\n")[1]?.trim() ?? "").toBe("");
+  });
+
+  it("T-DYN-CMD-01: removed dynamic archive and clear subcommands", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    const arch = await runCliWithExit(["dynamic", "archive"], dir);
+    expect(arch.code).not.toBe(0);
+    const clr = await runCliWithExit(["dynamic", "clear"], dir);
+    expect(clr.code).not.toBe(0);
+  });
+
+  it("T-DYN-ESC-01: dynamic write unescapes \\n in --text", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    await runCli(["config", "set", "--section", "dynamicDetail", "--min", "1", "--max", "200"], dir);
+    await runCli(["dynamic", "write", "--text", "line1\\nline2"], dir);
+    const shown = await runCli(["dynamic", "show"], dir);
+    expect(shown.out).toContain("1|line1");
+    expect(shown.out).toContain("2|line2");
   });
 
   it("T6: kb write, index rebuild, search finds expected doc in top results", async () => {

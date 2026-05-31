@@ -153,7 +153,7 @@ describe("apm read association area", () => {
     const firstB = first.out.match(/\[(\d+)%\]\s+docs\/hit-b\.md/)?.[1];
     expect(Number(firstA)).toBeGreaterThan(Number(firstB ?? 0));
     await runCli(["role", "write", "--text", kwB], dir);
-    await runCli(["dynamic", "clear"], dir);
+    await runCli(["dynamic", "write", "--text", ""], dir);
     const second = await runCli(["read"], dir);
     expect(second.out).toContain("docs/hit-b.md");
     const secondB = second.out.match(/\[(\d+)%\]\s+docs\/hit-b\.md/)?.[1];

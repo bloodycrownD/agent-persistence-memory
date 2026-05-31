@@ -1,4 +1,5 @@
 import type { Command } from "commander";
+import { unescapeCliText } from "../../core/cli-text-escape";
 import { apmPaths, ensureWorkspace } from "../../storage/paths";
 import { resolveKbDocPath } from "../../core/kb-path";
 import { atomicWrite } from "../../storage/fs-atomic";
@@ -28,9 +29,10 @@ export function registerKb(program: Command): void {
       ensureWorkspace(cwd);
       const paths = apmPaths(cwd);
       const dest = resolveKbDocPath(paths.kbDocs, opts.path);
+      const text = unescapeCliText(opts.text);
       await withGlobalLock(paths.lock, async () => {
         await serialWrite(dest, async () => {
-          await atomicWrite(dest, opts.text);
+          await atomicWrite(dest, text);
         });
       });
       console.log("OK");

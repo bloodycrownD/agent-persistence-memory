@@ -6,6 +6,7 @@ import { apmPaths } from "../storage/paths";
 import { withGlobalLock } from "../storage/fs-lock";
 import { serialWrite } from "../storage/serial";
 import { atomicWrite } from "../storage/fs-atomic";
+import { readSectionContent, writeSection } from "./sections-service";
 
 function dynamicArchiveBasename(): string {
   const d = new Date();
@@ -36,6 +37,26 @@ export async function clearMemoryDynamic(cwd: string): Promise<void> {
       await atomicWrite(paths.memoryDynamic, emptySection);
     });
   });
+}
+
+/** True when dynamic section body (front matter stripped) has non-whitespace content. */
+export function memoryDynamicBodyNonEmpty(cwd: string): boolean {
+  return readSectionContent(cwd, "dynamicDetail").trim().length > 0;
+}
+
+/**
+ * dynamic write: archive non-empty current file, then clear or overwrite.
+ * Index rebuild is handled by the CLI layer after this returns.
+ */
+export async function writeDynamicSection(cwd: string, text: string): Promise<void> {
+  if (memoryDynamicBodyNonEmpty(cwd)) {
+    await archiveMemoryDynamic(cwd);
+  }
+  if (text.length === 0) {
+    await clearMemoryDynamic(cwd);
+  } else {
+    await writeSection(cwd, "dynamicDetail", text);
+  }
 }
 
 export function countMemoryArchiveFiles(cwd: string): number {

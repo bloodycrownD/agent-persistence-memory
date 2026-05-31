@@ -23,8 +23,7 @@ disable-model-invocation: true
 
 ```
 .apm/
-  config.json
-  status.json
+  config.json        # limits + initializedAt / updatedAt / lastReadAt
   memory/
     role.md          # 角色
     persist.md       # 持久记忆
@@ -99,13 +98,13 @@ apm dynamic replace --old "下一步：…" --new "下一步：…"
 
 - 正文长度受 `apm config` 中各 section 的 `min`/`max` 约束。
 - Section 文件带 YAML front matter（`createdAt` / `updatedAt`），**不要**在 `read` 输出里手写 front matter。
+- **`--text` / `--old` / `--new` 转义**：在参数内用 `\n` 表示换行、`\t` 制表、`\\` 反斜杠；要字面量 `\n` 写 `\\n`。
 
 ### 动态记忆归档
 
-```bash
-apm dynamic archive   # 将 memory/dynamic.md 全文复制到 kb/archive/（带时间戳文件名）
-apm dynamic clear     # 清空 dynamic 正文模板；不删除 archive 已有文件
-```
+- **`apm dynamic write`** 覆盖前若当前正文非空，会自动将整份 `memory/dynamic.md`（含 front matter）复制到 `kb/archive/dynamic-YYYY-MM-DD-HHmmss.md`。
+- **清空**：`apm dynamic write --text ""`（绕过 min 限制；若正文非空会先归档再清空）。
+- 已移除 `apm dynamic archive` / `apm dynamic clear`。
 
 ### 知识库
 
@@ -120,7 +119,8 @@ apm kb dynamic show|write|replace # 对应 kb/dynamic/detail.md
 **索引注意：**
 
 - 升级或合并联想区功能后，若搜索/联想异常，先执行 **`apm kb index rebuild`**（索引内路径相对 `kb/`，如 `docs/foo.md`）。
-- `kb write` / `dynamic archive` **不会**自动重建索引；大批量变更后应手动 `rebuild`。
+- **`role` / `persist` / `dynamic` 的 `write` 与 `replace` 成功后自动 rebuild 索引**。
+- **`kb write` / `kb import` 不自动 rebuild**（import 成功后会 rebuild；单文件 `kb write` 后需手动 `rebuild`）。
 
 ### 配置
 
