@@ -98,13 +98,14 @@ apm dynamic replace --old "下一步：…" --new "下一步：…"
 
 - 正文长度受 `apm config` 中各 section 的 `min`/`max` 约束。
 - Section 文件带 YAML front matter（`createdAt` / `updatedAt`），**不要**在 `read` 输出里手写 front matter。
-- **`--text` / `--old` / `--new` 转义**：在参数内用 `\n` 表示换行、`\t` 制表、`\\` 反斜杠；要字面量 `\n` 写 `\\n`。
+- **`--text` / `--old` / `--new` 转义**（`role` / `persist` / `dynamic` / `kb write` / `kb dynamic` 均适用）：`\n` 换行、`\t` 制表、`\r` 回车、`\\` 反斜杠；要字面量 `\n` 写 `\\n`。Shell 已传入的真实换行符会原样保留。
 
 ### 动态记忆归档
 
-- **`apm dynamic write`** 覆盖前若当前正文非空，会自动将整份 `memory/dynamic.md`（含 front matter）复制到 `kb/archive/dynamic-YYYY-MM-DD-HHmmss.md`。
-- **清空**：`apm dynamic write --text ""`（绕过 min 限制；若正文非空会先归档再清空）。
-- 已移除 `apm dynamic archive` / `apm dynamic clear`。
+- **`apm dynamic write`** 覆盖前若当前正文非空，会自动将整份 `memory/dynamic.md`（含 front matter）复制到 `kb/archive/dynamic-YYYY-MM-DD-HHmmss.md`，并与本次 write 一并触发索引 rebuild。
+- **清空**：`apm dynamic write --text ""`（绕过 `min` 限制；正文已空则不归档；正文非空则先归档再清空）。
+- **`apm dynamic replace`** 不自动归档，但成功后仍会 rebuild 索引。
+- 已移除 `apm dynamic archive` / `apm dynamic clear`（请改用 `write` / `write --text ""`）。
 
 ### 知识库
 
@@ -116,13 +117,22 @@ apm kb index rebuild           # 扫描 kb/ 下除 index/ 外全部 .md 并写 s
 apm kb dynamic show|write|replace # 对应 kb/dynamic/detail.md
 ```
 
-**索引注意：**
+**索引 rebuild 规则：**
 
-- 升级或合并联想区功能后，若搜索/联想异常，先执行 **`apm kb index rebuild`**（索引内路径相对 `kb/`，如 `docs/foo.md`）。
-- **`role` / `persist` / `dynamic` 的 `write` 与 `replace` 成功后自动 rebuild 索引**。
-- **`kb write` / `kb import` 不自动 rebuild**（import 成功后会 rebuild；单文件 `kb write` 后需手动 `rebuild`）。
+| 操作 | 是否自动 `kb index rebuild` |
+|------|---------------------------|
+| `role` / `persist` / `dynamic` 的 `write`、`replace` | **是** |
+| `apm dynamic write`（含自动 archive） | **是** |
+| `apm kb import --from` | **是**（导入结束后） |
+| `apm kb write` | **否**（需手动 `apm kb index rebuild`） |
+| `apm kb dynamic` 的 `write` / `replace` | **否** |
+
+- 索引路径相对 `kb/`（如 `docs/foo.md`、`archive/dynamic-....md`）。
+- 搜索/联想异常时，可先手动执行 **`apm kb index rebuild`**。
 
 ### 配置
+
+`.apm/config.json` 合并了原 `status.json`：除各段 `limits` 外，还有 `initializedAt`、`updatedAt`、`lastReadAt`（`apm read` 暂不更新 `lastReadAt`）。旧工作区若仍有 `status.json`，首次命令会自动迁入 `config.json` 并删除 `status.json`。
 
 ```bash
 apm config show
@@ -152,14 +162,15 @@ npm run build
 npm test
 ```
 
-联想区用例见 `tests/cli.spec.ts` 中 `T-READ-ASSOC-*`。
+- 联想区：`tests/read-association.spec.ts`（`T-READ-ASSOC-*`）
+- 布局/归档/转义/索引：`tests/layout.spec.ts`、`tests/cli-text-escape.spec.ts`、`tests/config-merge.spec.ts`
 
 ## 修改 APM 代码时的约束
 
 1. **路径**：只用 `apmPaths()` / `resolveKbDocPath` / `resolveKbIndexedPath`。
 2. **写入**：`atomicWrite` + `withGlobalLock` + `serialWrite`。
 3. **检索**：索引与联想共用 `kb-index-service`（`kbTokenize`、MiniSearch）；联想关键词展示走 `kb-stopwords`（与索引分词分离）。
-4. **测试**：改动 CLI 行为必须更新 `tests/cli.spec.ts`。
+4. **测试**：改动 CLI 行为须更新对应用例（`tests/layout.spec.ts`、`tests/replace.spec.ts`、`tests/read-association.spec.ts` 等）。
 5. **迭代文档**：新功能 PRD/SPEC 放在 `docs/Iterations/<名称>/`。
 
 ## 与 `memory/` 目录的区别
@@ -183,6 +194,6 @@ npm test
 
 ## 延伸阅读
 
-- 联想区 PRD：`docs/Iterations/apm-read-association-area/prd.md`
-- 联想区 SPEC：`docs/Iterations/apm-read-association-area/spec.md`
-- kb 布局迭代：`docs/Iterations/apm-kb-memory-layout-init/spec.md`
+- 联想区：`.apm/kb/docs/Iterations/联想区格式优化/`、`apm-read-association-area/`
+- 动态写时归档：`.apm/kb/docs/Iterations/动态记忆写时归档/prd.md`、`spec.md`
+- kb 布局：`.apm/kb/docs/Iterations/apm-kb-memory-layout-init/spec.md`
