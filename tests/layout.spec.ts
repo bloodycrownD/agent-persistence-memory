@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildProgram } from "../src/index";
@@ -95,6 +96,26 @@ describe("apm cli v2 layout", () => {
     expect(clr.code).not.toBe(0);
   });
 
+  it("T-DYN-ARCH-02: first dynamic write on empty template does not archive", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    await runCli(["config", "set", "--section", "dynamicDetail", "--min", "10", "--max", "200"], dir);
+    const archDir = join(dir, ".apm", "kb", "archive");
+    const archivePattern = /^dynamic-\d{4}-\d{2}-\d{2}-\d{6}\.md$/;
+    expect(readdirSync(archDir).filter((f) => archivePattern.test(f)).length).toBe(0);
+    await runCli(["dynamic", "write", "--text", "x".repeat(12)], dir);
+    expect(readdirSync(archDir).filter((f) => archivePattern.test(f)).length).toBe(0);
+  });
+
+  it("T-DYN-ARCH-04: empty write on empty dynamic body creates no archive", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    const archDir = join(dir, ".apm", "kb", "archive");
+    const n = readdirSync(archDir).length;
+    await runCli(["dynamic", "write", "--text", ""], dir);
+    expect(readdirSync(archDir).length).toBe(n);
+  });
+
   it("T-DYN-ESC-01: dynamic write unescapes \\n in --text", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
@@ -103,6 +124,46 @@ describe("apm cli v2 layout", () => {
     const shown = await runCli(["dynamic", "show"], dir);
     expect(shown.out).toContain("1|line1");
     expect(shown.out).toContain("2|line2");
+  });
+
+  it("T-KB-ESC-01: kb write unescapes \\n in --text", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    await runCli(["kb", "write", "--path", "esc-test.md", "--text", "h1\\nh2"], dir);
+    const content = readFileSync(join(dir, ".apm", "kb", "docs", "esc-test.md"), "utf8");
+    expect(content).toContain("h1\nh2");
+  });
+
+  it("T-IDX-01: role write updates search.json.gz mtime or hash", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    await runCli(["kb", "write", "--path", "seed.md", "--text", "# Seed\nseed for index baseline\n"], dir);
+    await runCli(["kb", "index", "rebuild"], dir);
+    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
+    const idx = join(dir, ".apm", "kb", "index", "search.json.gz");
+    const beforeMtime = statSync(idx).mtimeMs;
+    const beforeHash = createHash("sha256").update(readFileSync(idx)).digest("hex");
+    await runCli(["role", "write", "--text", "role triggers rebuild"], dir);
+    expect(existsSync(idx)).toBe(true);
+    const afterMtime = statSync(idx).mtimeMs;
+    const afterHash = createHash("sha256").update(readFileSync(idx)).digest("hex");
+    expect(afterMtime >= beforeMtime).toBe(true);
+    expect(afterMtime > beforeMtime || afterHash !== beforeHash).toBe(true);
+  });
+
+  it("T-IDX-02: dynamic write archive is searchable after auto rebuild", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    await runCli(["config", "set", "--section", "dynamicDetail", "--min", "10", "--max", "200"], dir);
+    const keyword = "kwarchive_idx_fixture_xyz";
+    const body1 = `${keyword} ${"a".repeat(4)}`;
+    await runCli(["dynamic", "write", "--text", body1], dir);
+    await runCli(["dynamic", "write", "--text", "b".repeat(12)], dir);
+    const out = await runCli(["kb", "search", "--q", keyword], dir);
+    expect(out.out).toMatch(/archive\/dynamic-/);
+    const archived = readdirSync(join(dir, ".apm", "kb", "archive")).find((f) => /^dynamic-/.test(f));
+    expect(archived).toBeTruthy();
+    expect(readFileSync(join(dir, ".apm", "kb", "archive", archived!), "utf8")).toContain(keyword);
   });
 
   it("T6: kb write, index rebuild, search finds expected doc in top results", async () => {

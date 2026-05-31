@@ -136,6 +136,17 @@ describe("apm section replace", () => {
     expect((after.meta as { updatedAt: string }).updatedAt).not.toBe(staleUpdatedAt);
   });
 
+  it("T-REP-ESC-01: role replace unescapes \\n in --new", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
+    await runCli(["role", "write", "--text", "foo bar"], dir);
+    await runCli(["role", "replace", "--old", "foo", "--new", "a\\nb"], dir);
+    const { out } = await runCli(["role", "show"], dir);
+    expect(out).toContain("1|a");
+    expect(out).toContain("2|b");
+  });
+
   it("T-REP-11: replace behaves consistently across all four sections", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
