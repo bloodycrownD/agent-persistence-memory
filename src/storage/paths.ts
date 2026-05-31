@@ -3,6 +3,9 @@ import { join } from "node:path";
 import { nowLocal } from "../core/time";
 import { renderFrontMatter } from "./markdown";
 import { DEFAULT_CONFIG } from "../schemas/config";
+import { mergeConfigWithDefaults } from "../core/workspace-config-merge";
+import { migrateLegacyStatusIntoConfig } from "../services/workspace-config-migrate";
+import { ConfigSchema } from "../schemas/config";
 
 /**
  * Canonical v2 paths under `.apm/`: memory (role/persist/dynamic + archive),
@@ -14,7 +17,6 @@ export function apmPaths(cwd: string) {
   return {
     root,
     config: join(root, "config.json"),
-    status: join(root, "status.json"),
     lock: join(root, ".write.lock"),
     memoryRole: join(root, "memory", "role.md"),
     memoryPersist: join(root, "memory", "persist.md"),
@@ -65,8 +67,7 @@ export function isV2WorkspaceComplete(cwd: string): boolean {
     isDir(p.kbDocs) &&
     existsSync(p.kbDynamicDetail) &&
     isDir(p.kbIndexDir) &&
-    existsSync(p.config) &&
-    existsSync(p.status)
+    existsSync(p.config)
   );
 }
 
@@ -82,10 +83,15 @@ export function createWorkspaceV2Idempotent(cwd: string): void {
 
   const now = nowLocal();
   if (!existsSync(p.config)) {
-    writeFileSync(p.config, JSON.stringify(DEFAULT_CONFIG, null, 2), "utf8");
-  }
-  if (!existsSync(p.status)) {
-    writeFileSync(p.status, JSON.stringify({ initializedAt: now, updatedAt: now, lastReadAt: null }, null, 2), "utf8");
+    const cfg = ConfigSchema.parse(
+      mergeConfigWithDefaults({
+        limits: DEFAULT_CONFIG.limits,
+        initializedAt: now,
+        updatedAt: now,
+        lastReadAt: null
+      })
+    );
+    writeFileSync(p.config, JSON.stringify(cfg, null, 2), "utf8");
   }
   const emptySection = renderFrontMatter({ createdAt: now, updatedAt: now }, "");
   if (!existsSync(p.memoryRole)) writeFileSync(p.memoryRole, emptySection, "utf8");
@@ -124,6 +130,7 @@ export function ensureWorkspace(cwd: string): void {
     createWorkspaceV2Idempotent(cwd);
     return;
   }
+  migrateLegacyStatusIntoConfig(cwd);
   if (!isV2WorkspaceComplete(cwd)) {
     throw new Error("Incomplete .apm workspace (v2). Run `apm init` to create the full directory layout.");
   }
