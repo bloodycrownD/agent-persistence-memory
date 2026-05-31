@@ -1,8 +1,9 @@
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { ConfigSchema } from "../schemas/config";
 import { apmPaths } from "../storage/paths";
 import { mergeConfigWithDefaults } from "../core/workspace-config-merge";
+import { atomicWrite } from "../storage/fs-atomic";
 
 const LEGACY_STATUS_FILE = "status.json";
 
@@ -36,20 +37,21 @@ export function migrateLegacyStatusIntoConfig(cwd: string): void {
       ? (configRaw as Record<string, unknown>)
       : {};
 
-  // Prefer legacy status.json fields when both files exist (one-time migration).
+  // Config-wins when both files define a field; status fills gaps only (spec §6 step 3).
   const merged = mergeConfigWithDefaults({
     ...base,
-    initializedAt: statusRaw.initializedAt ?? base.initializedAt,
-    updatedAt: statusRaw.updatedAt ?? base.updatedAt,
+    initializedAt: base.initializedAt ?? statusRaw.initializedAt,
+    updatedAt: base.updatedAt ?? statusRaw.updatedAt,
     lastReadAt:
-      statusRaw.lastReadAt !== undefined
-        ? statusRaw.lastReadAt
-        : base.lastReadAt !== undefined
-          ? base.lastReadAt
+      base.lastReadAt !== undefined
+        ? base.lastReadAt
+        : statusRaw.lastReadAt !== undefined
+          ? statusRaw.lastReadAt
           : null
   });
 
   const parsed = ConfigSchema.parse(merged);
-  writeFileSync(p.config, JSON.stringify(parsed, null, 2), "utf8");
+  // No await: atomicWrite has no internal await, so the write finishes in this tick.
+  void atomicWrite(p.config, JSON.stringify(parsed, null, 2));
   rmSync(statusPath, { force: true });
 }
