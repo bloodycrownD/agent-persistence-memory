@@ -1,6 +1,6 @@
 ---
 name: apm-usage
-description: Provides APM CLI usage for init, read, role/persist/dynamic memory, kb import/search, and read association area. Use when the user mentions apm, external memory, .apm, apm read, knowledge base, or session context recovery.
+description: 指导 Agent 与开发者使用本仓库 APM CLI（init、read、role/persist/dynamic、kb 导入/索引/联想区、replace 局部更新）。在用户提到 apm、外置记忆、.apm、apm read、知识库、会话恢复或 Agent 初始化上下文时使用。
 disable-model-invocation: true
 ---
 
