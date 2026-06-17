@@ -1,6 +1,6 @@
 ---
 name: apm-usage
-description: 指导 Agent 与开发者使用本仓库 APM CLI（init、read、role/persist/dynamic、kb 导入/索引/联想区、replace 局部更新）。在用户提到 apm、外置记忆、.apm、apm read、知识库、会话恢复或 Agent 初始化上下文时使用。
+description: 指导 Agent 与开发者使用本仓库 APM CLI（init、read、role/persist/dynamic、kb 导入/索引/联想区、replace 局部更新、validate 干跑、stdin 管道写入）。在用户提到 apm、外置记忆、.apm、apm read、知识库、会话恢复或 Agent 初始化上下文时使用。
 disable-model-invocation: true
 ---
 
@@ -23,7 +23,7 @@ apm persist write --text "…"  # 可选：长期结论
 
 ```
 .apm/
-  config.json          # 各段 min/max；initializedAt / updatedAt / lastReadAt
+  config.json          # 各段 max 上限；initializedAt / updatedAt / lastReadAt
   memory/role.md       # 角色
   memory/persist.md    # 持久记忆
   memory/dynamic.md    # 动态记忆（当前任务）
@@ -34,6 +34,19 @@ apm persist write --text "…"  # 可选：长期结论
 ```
 
 `apm kb write --path` 的路径相对 `kb/docs/`（如 `Iterations/foo/prd.md`）。检索与联想中的路径相对 `kb/`（如 `docs/foo.md`、`archive/dynamic-....md`）。
+
+## 默认长度上限（仅 max，无下限）
+
+| 段 | config section | 默认 max |
+|----|----------------|----------|
+| 角色 | `role` | 100 |
+| 持久记忆 | `persist` | 800 |
+| 动态记忆 | `dynamicDetail` | 1500 |
+| KB 动态 | `kbDynamicDetail` | 1500 |
+
+- **无下限**：任意短文本（含 1 字、空串）均可写入。
+- **仅上限**：超过 `max` 时默认报错；可加 `--truncate` 截断后写入（stderr 会警告）。
+- `kb write` **不受**上述 max 限制。
 
 ## `apm read` 输出
 
@@ -53,38 +66,85 @@ apm persist write --text "…"  # 可选：长期结论
 
 ### 记忆：`role` | `persist` | `dynamic`
 
-`show` · `write --text <正文>` · `replace --old <原文> --new <新文> [--all]`
+`show` · `write` · `validate` · `replace --old <原文> --new <新文> [--all]`
 
 ```bash
 apm role show
 apm role write --text "…"
+apm role validate --text "…"
 apm role replace --old "旧" --new "新"
 apm persist write --text "…"
 apm dynamic write --text "…"
 apm dynamic replace --old "…" --new "…"
 ```
 
+#### 正文输入：`--text`、管道、`--stdin`
+
+- `--text <正文>`：单行参数，支持转义 `\n` `\t` `\r` `\\`。
+- **管道**（未传 `--text` 时自动读 stdin）：`echo hello | apm dynamic write`
+- **`--stdin`**：显式从 stdin 读取（与 `--text` **互斥**）。
+
+```bash
+# bash：管道写入
+echo -e "任务：…\n下一步：…" | apm dynamic write
+
+# bash：重定向文件
+apm kb write --path Iterations/foo/prd.md --stdin < prd.md
+
+# PowerShell：管道写入
+"任务：…`n下一步：…" | apm dynamic write
+
+# PowerShell：重定向文件
+Get-Content .\prd.md -Raw | apm kb write --path Iterations/foo/prd.md --stdin
+```
+
+**无 `--file` 参数**：长文档请先写入 `kb/docs/` 路径（Shell 重定向 stdin），或使用 Agent 写文件工具后执行 `apm kb index rebuild`。
+
+#### `validate`（干跑，不落盘）
+
+```bash
+apm dynamic validate --text "草稿正文"
+echo "草稿" | apm persist validate
+```
+
+- 规则与 `write` 相同（仅检查 max）；成功输出 `OK: <当前长度>/<max>`。
+- 不写盘、不归档、不触发索引重建。
+
+#### `--truncate`（超长截断写入）
+
+```bash
+apm role write --text "超长正文…" --truncate
+apm role replace --old "旧" --new "新" --truncate
+```
+
+- 正文超过 `max` 时截断至 `max` 后写入；stderr 输出 `Warning: … truncated …`。
+- 未加 `--truncate` 时超长仍报错：`got <n>, max <m>, need <k> fewer chars.`
+
+#### `replace` 其他说明
+
 - `replace`：`--old` 须与 `show`/`read` 正文**原样**匹配；默认只换第一次，全换加 `--all`。
-- 全量覆盖用 `write`；长度受 `apm config` 约束。
+- 全量覆盖用 `write`。
 - 写入时不要手写 YAML front matter。
-- `--text` / `--old` / `--new` 支持转义：`\n` `\t` `\r` `\\`；字面量 `\n` 写 `\\n`（`kb write` 的 `--text` 同理）。
+- `--old` / `--new` 支持转义（`kb write` 的 `--text` / stdin 同理）。
 
 ### `dynamic` 与归档
 
 | 命令 | 行为 |
 |------|------|
-| `dynamic write --text "…"` | 当前正文非空时先写入 `kb/archive/dynamic-<时间戳>.md`，再覆盖 `memory/dynamic.md` |
+| `dynamic write` | 当前正文非空时先写入 `kb/archive/dynamic-<时间戳>.md`，再覆盖 `memory/dynamic.md` |
 | `dynamic write --text ""` | 清空 dynamic（非空则先归档） |
 | `dynamic replace` | 只改正文，不归档 |
+| `dynamic validate` | 仅校验长度，不归档、不写盘 |
 
 ### 知识库
 
 ```bash
 apm kb import --from <目录>
 apm kb write --path <path.md> --text "…"
+apm kb write --path <path.md> --stdin    # 或管道 stdin
 apm kb search --q "<查询>"
 apm kb index rebuild
-apm kb dynamic show|write|replace
+apm kb dynamic show|write|validate|replace
 ```
 
 | 操作 | 自动 `kb index rebuild` |
@@ -93,13 +153,17 @@ apm kb dynamic show|write|replace
 | `dynamic write` | 是 |
 | `kb import` | 是 |
 | `kb write`、`kb dynamic` 的 write/replace | 否 |
+| `validate`（各段） | 否 |
 
 ### 配置
 
 ```bash
 apm config show
-apm config set --section role|persist|dynamicDetail|kbDynamicDetail --min <n> --max <n>
+apm config set --section role|persist|dynamicDetail|kbDynamicDetail --max <n>
 ```
+
+- 各段 limits **仅含 `max`**；旧 config 中的 `min` 读取时忽略。
+- `config set` 写回时只持久化 `{ "max": n }`。
 
 ## 典型场景
 
@@ -109,14 +173,24 @@ apm config set --section role|persist|dynamicDetail|kbDynamicDetail --min <n> --
 
 ```bash
 apm dynamic write --text "任务：…\n下一步：…"
+# 或管道 / --stdin（见上文）
 ```
 
 **写入知识库单文件：**
 
 ```bash
 apm kb write --path Iterations/<名>/prd.md --text "…"
+# 或：apm kb write --path … --stdin < prd.md
 apm kb index rebuild
 apm read
+```
+
+**写入前干跑校验：**
+
+```bash
+apm dynamic validate --text "草稿"
+# 通过后再 write
+apm dynamic write --text "草稿"
 ```
 
 **批量导入：** `apm kb import --from docs`（导入后自动 rebuild）。
@@ -136,5 +210,6 @@ apm read
 | `Knowledge index missing` | `apm kb index rebuild` |
 | 联想区无结果 | 记忆与 kb 有共同词；`rebuild` |
 | `kb write` 后搜不到 | `apm kb index rebuild` |
-| 长度报错 | `apm config set` 调大 `max` 或缩短正文 |
-| `\n` 未换行 | 使用 `\n` 转义序列，或传真实换行 |
+| 长度报错 `got … max … need … fewer` | 缩短正文、`config set --max` 调大，或 `write --truncate` |
+| `\n` 未换行 | 使用 `\n` 转义序列、管道真实换行，或 `--stdin` |
+| `Cannot use both --text and --stdin` | 只选其一 |
