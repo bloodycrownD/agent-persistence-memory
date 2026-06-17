@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { unescapeCliText } from "../../core/cli-text-escape";
+import { resolveCliBodyText } from "../../core/cli-body-input";
 import { apmPaths, ensureWorkspace } from "../../storage/paths";
 import { resolveKbDocPath } from "../../core/kb-path";
 import { atomicWrite } from "../../storage/fs-atomic";
@@ -21,15 +21,17 @@ export function registerKb(program: Command): void {
       console.log("OK");
     });
 
-  kb.command("write")
+  kb
+    .command("write")
     .requiredOption("--path <rel>", "Relative path under kb/docs (must end with .md)")
-    .requiredOption("--text <text>", "File contents")
-    .action(async (opts: { path: string; text: string }) => {
+    .option("--text <text>", "File contents")
+    .option("--stdin", "Read body from stdin")
+    .action(async (opts: { path: string; text?: string; stdin?: boolean }) => {
       const cwd = process.cwd();
       ensureWorkspace(cwd);
       const paths = apmPaths(cwd);
       const dest = resolveKbDocPath(paths.kbDocs, opts.path);
-      const text = unescapeCliText(opts.text);
+      const text = await resolveCliBodyText(opts);
       await withGlobalLock(paths.lock, async () => {
         await serialWrite(dest, async () => {
           await atomicWrite(dest, text);
