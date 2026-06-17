@@ -25,7 +25,7 @@ describe("apm section replace", () => {
   it("T-REP-02: edit subcommand is unavailable", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
+    await runCli(["config", "set", "--section", "role", "--max", "100"], dir);
     await runCli(["role", "write", "--text", "unchanged"], dir);
     const { code, stderr } = await runCliWithExit(
       ["role", "edit", "--start", "1", "--end", "1", "--text", "x"],
@@ -40,7 +40,7 @@ describe("apm section replace", () => {
   it("T-REP-03: replace substitutes first occurrence only", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
+    await runCli(["config", "set", "--section", "role", "--max", "100"], dir);
     await runCli(["role", "write", "--text", "alpha beta alpha"], dir);
     await runCli(["role", "replace", "--old", "alpha", "--new", "X"], dir);
     const { out } = await runCli(["role", "show"], dir);
@@ -50,7 +50,7 @@ describe("apm section replace", () => {
   it("T-REP-04: replace fails when --old not found", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
+    await runCli(["config", "set", "--section", "role", "--max", "100"], dir);
     await runCli(["role", "write", "--text", "hello"], dir);
     const err = await runCliFail(["role", "replace", "--old", "missing", "--new", "Y"], dir);
     expect(err).toContain("not found");
@@ -61,7 +61,7 @@ describe("apm section replace", () => {
   it("T-REP-05: replace without --all changes only first match", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
+    await runCli(["config", "set", "--section", "role", "--max", "100"], dir);
     await runCli(["role", "write", "--text", "aa"], dir);
     await runCli(["role", "replace", "--old", "a", "--new", "b"], dir);
     const { out } = await runCli(["role", "show"], dir);
@@ -71,7 +71,7 @@ describe("apm section replace", () => {
   it("T-REP-06: replace --all substitutes every occurrence", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
+    await runCli(["config", "set", "--section", "role", "--max", "100"], dir);
     await runCli(["role", "write", "--text", "a|a|a"], dir);
     await runCli(["role", "replace", "--old", "a", "--new", "b", "--all"], dir);
     const { out } = await runCli(["role", "show"], dir);
@@ -81,7 +81,7 @@ describe("apm section replace", () => {
   it("T-REP-07: replace --all still fails when --old not found", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
+    await runCli(["config", "set", "--section", "role", "--max", "100"], dir);
     await runCli(["role", "write", "--text", "hello"], dir);
     const err = await runCliFail(["role", "replace", "--old", "missing", "--new", "Y", "--all"], dir);
     expect(err).toContain("not found");
@@ -92,7 +92,7 @@ describe("apm section replace", () => {
   it("T-REP-08: replace rejects empty --old", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
+    await runCli(["config", "set", "--section", "role", "--max", "100"], dir);
     await runCli(["role", "write", "--text", "hello"], dir);
     const err = await runCliFail(["role", "replace", "--old", "", "--new", "x"], dir);
     expect(err).toContain("must not be empty");
@@ -101,29 +101,28 @@ describe("apm section replace", () => {
   it("T-REP-09: replace respects section limits and leaves file unchanged on failure", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "5"], dir);
+    await runCli(["config", "set", "--section", "role", "--max", "5"], dir);
     await runCli(["role", "write", "--text", "abcde"], dir);
     const err = await runCliFail(["role", "replace", "--old", "a", "--new", "ZZZZZ"], dir);
-    expect(err).toMatch(/length must be|chars/i);
+    expect(err).toMatch(/got.*max.*fewer/i);
     const { out } = await runCli(["role", "show"], dir);
     expect(out).toContain("1|abcde");
   });
 
-  it("T-REP-09b: replace rejects result below section min and leaves file unchanged", async () => {
+  it("T-REP-09b: replace allows result below former min length", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "role", "--min", "3", "--max", "100"], dir);
+    await runCli(["config", "set", "--section", "role", "--max", "100"], dir);
     await runCli(["role", "write", "--text", "abcde"], dir);
-    const err = await runCliFail(["role", "replace", "--old", "abcd", "--new", ""], dir);
-    expect(err).toMatch(/length must be|chars/i);
+    await runCli(["role", "replace", "--old", "abcd", "--new", ""], dir);
     const { out } = await runCli(["role", "show"], dir);
-    expect(out).toContain("1|abcde");
+    expect(out).toContain("1|e");
   });
 
   it("T-REP-10: successful replace updates updatedAt but not createdAt", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
+    await runCli(["config", "set", "--section", "role", "--max", "100"], dir);
     await runCli(["role", "write", "--text", "alpha beta alpha"], dir);
     const rolePath = join(dir, ".apm", "memory", "role.md");
     const staleUpdatedAt = "2020-01-01 00:00:00";
@@ -139,7 +138,7 @@ describe("apm section replace", () => {
   it("T-REP-ESC-01: role replace unescapes \\n in --new", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
+    await runCli(["config", "set", "--section", "role", "--max", "100"], dir);
     await runCli(["role", "write", "--text", "foo bar"], dir);
     await runCli(["role", "replace", "--old", "foo", "--new", "a\\nb"], dir);
     const { out } = await runCli(["role", "show"], dir);
@@ -157,7 +156,7 @@ describe("apm section replace", () => {
       { cmd: ["kb", "dynamic"] as const, section: "kbDynamicDetail", path: join(dir, ".apm", "kb", "dynamic", "detail.md") }
     ] as const;
     for (const { cmd, section, path } of cases) {
-      await runCli(["config", "set", "--section", section, "--min", "1", "--max", "100"], dir);
+      await runCli(["config", "set", "--section", section, "--max", "100"], dir);
       await runCli([...cmd, "write", "--text", "alpha beta alpha"], dir);
       await runCli([...cmd, "replace", "--old", "alpha", "--new", "X"], dir);
       const { out } = await runCli([...cmd, "show"], dir);

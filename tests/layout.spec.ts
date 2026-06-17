@@ -44,7 +44,7 @@ describe("apm cli v2 layout", () => {
   it("T3: dynamic uses flat show/write/replace (no detail subcommand)", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "dynamicDetail", "--min", "10", "--max", "80"], dir);
+    await runCli(["config", "set", "--section", "dynamicDetail", "--max", "80"], dir);
     const body = "x".repeat(10);
     await runCli(["dynamic", "write", "--text", body], dir);
     const shown = await runCli(["dynamic", "show"], dir);
@@ -60,7 +60,7 @@ describe("apm cli v2 layout", () => {
   it("T4: dynamic write auto-archives previous content to kb/archive", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "dynamicDetail", "--min", "10", "--max", "200"], dir);
+    await runCli(["config", "set", "--section", "dynamicDetail", "--max", "200"], dir);
     const body = "y".repeat(12);
     await runCli(["dynamic", "write", "--text", body], dir);
     const beforeSecond = readFileSync(join(dir, ".apm", "memory", "dynamic.md"), "utf8");
@@ -76,7 +76,7 @@ describe("apm cli v2 layout", () => {
   it("T5: dynamic write --text empty clears; archives non-empty first", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "dynamicDetail", "--min", "10", "--max", "200"], dir);
+    await runCli(["config", "set", "--section", "dynamicDetail", "--max", "200"], dir);
     await runCli(["dynamic", "write", "--text", "z".repeat(12)], dir);
     const archDir = join(dir, ".apm", "kb", "archive");
     const n = readdirSync(archDir).length;
@@ -99,7 +99,7 @@ describe("apm cli v2 layout", () => {
   it("T-DYN-ARCH-02: first dynamic write on empty template does not archive", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "dynamicDetail", "--min", "10", "--max", "200"], dir);
+    await runCli(["config", "set", "--section", "dynamicDetail", "--max", "200"], dir);
     const archDir = join(dir, ".apm", "kb", "archive");
     const archivePattern = /^dynamic-\d{4}-\d{2}-\d{2}-\d{6}\.md$/;
     expect(readdirSync(archDir).filter((f) => archivePattern.test(f)).length).toBe(0);
@@ -119,7 +119,7 @@ describe("apm cli v2 layout", () => {
   it("T-DYN-ESC-01: dynamic write unescapes \\n in --text", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "dynamicDetail", "--min", "1", "--max", "200"], dir);
+    await runCli(["config", "set", "--section", "dynamicDetail", "--max", "200"], dir);
     await runCli(["dynamic", "write", "--text", "line1\\nline2"], dir);
     const shown = await runCli(["dynamic", "show"], dir);
     expect(shown.out).toContain("1|line1");
@@ -139,7 +139,7 @@ describe("apm cli v2 layout", () => {
     await runCli(["init"], dir);
     await runCli(["kb", "write", "--path", "seed.md", "--text", "# Seed\nseed for index baseline\n"], dir);
     await runCli(["kb", "index", "rebuild"], dir);
-    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "100"], dir);
+    await runCli(["config", "set", "--section", "role", "--max", "100"], dir);
     const idx = join(dir, ".apm", "kb", "index", "search.json.gz");
     const beforeMtime = statSync(idx).mtimeMs;
     const beforeHash = createHash("sha256").update(readFileSync(idx)).digest("hex");
@@ -154,7 +154,7 @@ describe("apm cli v2 layout", () => {
   it("T-IDX-02: dynamic write archive is searchable after auto rebuild", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "dynamicDetail", "--min", "10", "--max", "200"], dir);
+    await runCli(["config", "set", "--section", "dynamicDetail", "--max", "200"], dir);
     const keyword = "kwarchive_idx_fixture_xyz";
     const body1 = `${keyword} ${"a".repeat(4)}`;
     await runCli(["dynamic", "write", "--text", body1], dir);
@@ -206,7 +206,7 @@ describe("apm cli v2 layout", () => {
     expect(existsSync(join(dir, ".apm", "memory", "dynamic.md"))).toBe(true);
     expect(existsSync(join(dir, ".apm", "tmp"))).toBe(false);
     expect(existsSync(join(dir, ".apm", "chunks"))).toBe(false);
-    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "10"], dir);
+    await runCli(["config", "set", "--section", "role", "--max", "10"], dir);
     await runCli(["role", "write", "--text", "abcdef"], dir);
     const shown = await runCli(["role", "show"], dir);
     expect(shown.out).toContain("1|abcdef");
@@ -221,7 +221,7 @@ describe("apm cli v2 layout", () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     writeFileSync(join(dir, ".apm", "memory", "role.md"), "corrupted content", "utf8");
-    await runCli(["config", "set", "--section", "persist", "--min", "1", "--max", "100"], dir);
+    await runCli(["config", "set", "--section", "persist", "--max", "100"], dir);
     await runCli(["persist", "write", "--text", "good-persist"], dir);
 
     const res = await runCli(["read"], dir);
@@ -243,7 +243,7 @@ describe("apm cli v2 layout", () => {
   it("enforces dynamicDetail limits after flat write", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "dynamicDetail", "--min", "10", "--max", "80"], dir);
+    await runCli(["config", "set", "--section", "dynamicDetail", "--max", "80"], dir);
     const body = "x".repeat(10);
     await runCli(["dynamic", "write", "--text", body], dir);
     const shown = await runCli(["dynamic", "show"], dir);
@@ -262,7 +262,7 @@ describe("apm cli v2 layout", () => {
     expect(existsSync(join(dir, ".apm", "kb", "docs", "sub", "b.md"))).toBe(true);
     const out = await runCli(["kb", "search", "--q", "import_kw_xyz"], dir);
     expect(out.out).toContain("a.md");
-    await runCli(["config", "set", "--section", "kbDynamicDetail", "--min", "5", "--max", "120"], dir);
+    await runCli(["config", "set", "--section", "kbDynamicDetail", "--max", "120"], dir);
     await runCli(["kb", "dynamic", "write", "--text", "kbdyn-----"], dir);
     const kd = await runCli(["kb", "dynamic", "show"], dir);
     expect(kd.out).toContain("kbdyn");

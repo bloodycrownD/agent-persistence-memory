@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Readable } from "node:stream";
 import type { Command } from "commander";
 import { afterEach } from "vitest";
 import { buildProgram } from "../../src/index";
@@ -36,6 +37,57 @@ export async function runCli(args: string[], cwd: string): Promise<{ out: string
 export async function runCliFail(args: string[], cwd: string): Promise<string> {
   try {
     await runCli(args, cwd);
+    throw new Error("Expected command to fail.");
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
+}
+
+/** 模拟 stdin 管道执行 CLI（parseAsync 前替换 process.stdin 并设 isTTY=false）。 */
+export async function runCliWithStdin(
+  args: string[],
+  cwd: string,
+  stdinBody: string
+): Promise<{ out: string; err: string }> {
+  const prev = process.cwd();
+  const prevStdin = process.stdin;
+  const out: string[] = [];
+  const err: string[] = [];
+  const oldLog = console.log;
+  const oldErr = console.error;
+  console.log = (...a: unknown[]) => out.push(a.join(" "));
+  console.error = (...a: unknown[]) => err.push(a.join(" "));
+  const mockStdin = Readable.from([stdinBody]);
+  Object.defineProperty(mockStdin, "isTTY", { value: false, configurable: true });
+  Object.defineProperty(process, "stdin", {
+    value: mockStdin,
+    configurable: true,
+    writable: true
+  });
+  process.chdir(cwd);
+  try {
+    const program = buildProgram();
+    await program.parseAsync(["node", "apm", ...args], { from: "node" });
+    return { out: out.join("\n"), err: err.join("\n") };
+  } finally {
+    process.chdir(prev);
+    Object.defineProperty(process, "stdin", {
+      value: prevStdin,
+      configurable: true,
+      writable: true
+    });
+    console.log = oldLog;
+    console.error = oldErr;
+  }
+}
+
+export async function runCliWithStdinFail(
+  args: string[],
+  cwd: string,
+  stdinBody: string
+): Promise<string> {
+  try {
+    await runCliWithStdin(args, cwd, stdinBody);
     throw new Error("Expected command to fail.");
   } catch (e) {
     return e instanceof Error ? e.message : String(e);

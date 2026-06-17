@@ -20,9 +20,9 @@ export function assocEntryBlocks(out: string): string[] {
 
 export async function setupAssocWorkspace(dir: string): Promise<void> {
   await runCli(["init"], dir);
-  await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "500"], dir);
-  await runCli(["config", "set", "--section", "persist", "--min", "1", "--max", "500"], dir);
-  await runCli(["config", "set", "--section", "dynamicDetail", "--min", "1", "--max", "500"], dir);
+  await runCli(["config", "set", "--section", "role", "--max", "500"], dir);
+  await runCli(["config", "set", "--section", "persist", "--max", "500"], dir);
+  await runCli(["config", "set", "--section", "dynamicDetail", "--max", "500"], dir);
 }
 
 export function removeKbDocsReadme(dir: string): void {

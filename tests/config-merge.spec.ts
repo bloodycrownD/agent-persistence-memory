@@ -53,9 +53,9 @@ describe("config.json / status.json merge", () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     const before = JSON.parse(readFileSync(join(dir, ".apm", "config.json"), "utf8"));
-    await runCli(["config", "set", "--section", "role", "--min", "1", "--max", "50"], dir);
+    await runCli(["config", "set", "--section", "role", "--max", "50"], dir);
     const after = JSON.parse(readFileSync(join(dir, ".apm", "config.json"), "utf8"));
-    expect(after.limits.role).toEqual({ min: 1, max: 50 });
+    expect(after.limits.role).toEqual({ max: 50 });
     expect(after.initializedAt).toBe(before.initializedAt);
     expect(after.updatedAt).toBe(before.updatedAt);
     expect(after.lastReadAt).toBe(before.lastReadAt);
