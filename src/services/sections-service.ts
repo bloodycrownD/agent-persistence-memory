@@ -34,6 +34,11 @@ function getSectionLimits(cwd: string, section: Section): Limits {
   return cfg.limits.kbDynamicDetail;
 }
 
+/** 读取记忆段配置的上限字符数。 */
+export function getSectionMax(cwd: string, section: Section): number {
+  return getSectionLimits(cwd, section).max;
+}
+
 /** 生成记忆段超长报错文案（英文，与 CLI 一致）。 */
 export function formatLengthError(section: Section, len: number, max: number): string {
   return `${sectionLabel(section)} content length: got ${len}, max ${max}, need ${len - max} fewer chars.`;
@@ -71,13 +76,13 @@ export function validateSectionContent(
 /**
  * 准备写入的正文：`truncate` 为 true 且超长时截断；否则超长抛错，否则返回原文。
  */
-export function prepareSectionBody(text: string, max: number, truncate: boolean): string {
+export function prepareSectionBody(text: string, max: number, truncate: boolean, section: Section): string {
   const len = countChars(text);
   if (truncate && len > max) {
     return truncateToMaxChars(text, max);
   }
   if (len > max) {
-    throw new Error(`content length: got ${len}, max ${max}, need ${len - max} fewer chars.`);
+    throw new Error(formatLengthError(section, len, max));
   }
   return text;
 }
@@ -146,7 +151,7 @@ export async function writeSection(
   let truncatedFrom: number | undefined;
 
   if (opts?.truncate) {
-    body = prepareSectionBody(text, limits.max, true);
+    body = prepareSectionBody(text, limits.max, true, section);
     if (originalLen > limits.max) {
       truncatedFrom = originalLen;
     }

@@ -7,6 +7,7 @@ import { writeDynamicSection } from "../../services/dynamic-archive-service";
 import { rebuildKbIndex } from "../../services/kb-index-service";
 import {
   formatTruncationWarning,
+  getSectionMax,
   readSectionContent,
   replaceSection,
   validateSectionContent,
@@ -31,7 +32,7 @@ function emitTruncationWarningIfNeeded(
   if (truncatedFrom === undefined) {
     return;
   }
-  const { max } = validateSectionContent(cwd, section, "");
+  const max = getSectionMax(cwd, section);
   console.error(formatTruncationWarning(section, truncatedFrom, max));
 }
 

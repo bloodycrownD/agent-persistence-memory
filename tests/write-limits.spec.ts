@@ -40,6 +40,14 @@ describe("write limits / stdin / validate / truncate", () => {
     expect(readMemoryBody(dir, "persist.md")).toBe("x");
   });
 
+  it("T-WL-02b: empty string write succeeds within max", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    const { out } = await runCli(["role", "write", "--text", ""], dir);
+    expect(out).toBe("OK");
+    expect(readMemoryBody(dir, "role.md")).toBe("");
+  });
+
   it("T-WL-03: write over max fails with got/max/fewer and leaves disk unchanged", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
@@ -86,6 +94,20 @@ describe("write limits / stdin / validate / truncate", () => {
     expect(readMemoryBody(dir, "role.md")).toBe(before);
   });
 
+  it("T-WL-06b: replace --truncate shortens over-max result and warns on stderr", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    await runCli(["config", "set", "--section", "role", "--max", "5"], dir);
+    await runCli(["role", "write", "--text", "abcde"], dir);
+    const { out, err } = await runCli(
+      ["role", "replace", "--old", "a", "--new", "ZZZZZ", "--truncate"],
+      dir
+    );
+    expect(out).toBe("OK");
+    expect(err).toMatch(/truncated/i);
+    expect(readMemoryBody(dir, "role.md")).toBe("ZZZZZ");
+  });
+
   it("T-WL-07: dynamic write --stdin matches equivalent --text", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
@@ -98,6 +120,24 @@ describe("write limits / stdin / validate / truncate", () => {
     await runCli(["dynamic", "write", "--text", body], textDir);
     expect(readMemoryBody(dir, "dynamic.md")).toBe(body);
     expect(readMemoryBody(textDir, "dynamic.md")).toBe(body);
+  });
+
+  it("T-WL-07b: implicit pipe write without --stdin matches --text", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    const body = "implicit-pipe-body";
+    await runCliWithStdin(["dynamic", "write"], dir, body);
+    expect(readMemoryBody(dir, "dynamic.md")).toBe(body);
+  });
+
+  it("T-WL-07c: implicit pipe validate without --stdin matches --text validate", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    const body = "validate-pipe";
+    const explicit = await runCli(["role", "validate", "--text", body], dir);
+    const implicit = await runCliWithStdin(["role", "validate"], dir, body);
+    expect(implicit.out).toBe(explicit.out);
+    expect(implicit.out).toBe(`OK: ${body.length}/100`);
   });
 
   it("T-WL-08: validate --stdin over max fails without writing", async () => {

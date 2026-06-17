@@ -47,6 +47,13 @@ describe("config.json / status.json merge", () => {
     expect(cfg.initializedAt).toBe("2019-06-01 08:00:00");
     expect(cfg.updatedAt).toBe("2019-06-02 09:00:00");
     expect(cfg.lastReadAt).toBe("2019-06-03 10:00:00");
+    expect(cfg.limits.role).toEqual({ max: 10 });
+    expect(cfg.limits.persist).toEqual({ max: 10 });
+    expect(cfg.limits.dynamicDetail).toEqual({ max: 10 });
+    expect(cfg.limits.kbDynamicDetail).toEqual({ max: 10 });
+    for (const key of ["role", "persist", "dynamicDetail", "kbDynamicDetail"] as const) {
+      expect(cfg.limits[key]).not.toHaveProperty("min");
+    }
   });
 
   it("T-CONF-03: config set preserves status fields", async () => {
