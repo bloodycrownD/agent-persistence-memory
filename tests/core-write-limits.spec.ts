@@ -1,27 +1,6 @@
 import { Readable } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveCliBodyText } from "../src/core/cli-body-input";
-import { countChars, truncateToMaxChars } from "../src/core/validate";
-
-describe("truncateToMaxChars", () => {
-  it("按 Unicode 码点截断 emoji", () => {
-    const text = "😀😀😀";
-    expect(countChars(text)).toBe(3);
-    expect(truncateToMaxChars(text, 2)).toBe("😀😀");
-    expect(countChars(truncateToMaxChars(text, 2))).toBe(2);
-  });
-
-  it("未超长时原样返回", () => {
-    expect(truncateToMaxChars("abc", 10)).toBe("abc");
-  });
-
-  it("按码点处理 CJK 等多字节字符", () => {
-    const text = "日本語";
-    expect(countChars(text)).toBe(3);
-    expect(truncateToMaxChars(text, 2)).toBe("日本");
-    expect(countChars(truncateToMaxChars(text, 2))).toBe(2);
-  });
-});
 
 describe("resolveCliBodyText", () => {
   let prevStdin: typeof process.stdin;

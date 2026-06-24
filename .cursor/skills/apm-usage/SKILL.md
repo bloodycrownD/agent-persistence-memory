@@ -45,7 +45,7 @@ apm persist write --text "…"  # 可选：长期结论
 | KB 动态 | `kbDynamicDetail` | 1500 |
 
 - **无下限**：任意短文本（含 1 字、空串）均可写入。
-- **仅上限**：超过 `max` 时默认报错；可加 `--truncate` 截断后写入（stderr 会警告）。
+- **仅上限**：超过 `max` 时拒绝写入，报错含 `got n, max m, need k fewer chars`。
 - `kb write` **不受**上述 max 限制。
 
 ## `apm read` 输出
@@ -109,16 +109,6 @@ echo "草稿" | apm persist validate
 
 - 规则与 `write` 相同（仅检查 max）；成功输出 `OK: <当前长度>/<max>`。
 - 不写盘、不归档、不触发索引重建。
-
-#### `--truncate`（超长截断写入）
-
-```bash
-apm role write --text "超长正文…" --truncate
-apm role replace --old "旧" --new "新" --truncate
-```
-
-- 正文超过 `max` 时截断至 `max` 后写入；stderr 输出 `Warning: … truncated …`。
-- 未加 `--truncate` 时超长仍报错：`got <n>, max <m>, need <k> fewer chars.`
 
 #### `replace` 其他说明
 
@@ -210,6 +200,6 @@ apm dynamic write --text "草稿"
 | `Knowledge index missing` | `apm kb index rebuild` |
 | 联想区无结果 | 记忆与 kb 有共同词；`rebuild` |
 | `kb write` 后搜不到 | `apm kb index rebuild` |
-| 长度报错 `got … max … need … fewer` | 缩短正文、`config set --max` 调大，或 `write --truncate` |
+| 长度报错 `got … max … need … fewer` | 缩短正文，或 `config set --max` 调大；可先 `validate` 干跑 |
 | `\n` 未换行 | 使用 `\n` 转义序列、管道真实换行，或 `--stdin` |
 | `Cannot use both --text and --stdin` | 只选其一 |

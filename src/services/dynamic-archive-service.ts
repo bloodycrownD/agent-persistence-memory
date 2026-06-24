@@ -6,7 +6,7 @@ import { apmPaths } from "../storage/paths";
 import { withGlobalLock } from "../storage/fs-lock";
 import { serialWrite } from "../storage/serial";
 import { atomicWrite } from "../storage/fs-atomic";
-import { readSectionContent, writeSection, type SectionWriteOptions, type SectionWriteResult } from "./sections-service";
+import { readSectionContent, writeSection } from "./sections-service";
 
 function dynamicArchiveBasename(): string {
   const d = new Date();
@@ -45,22 +45,18 @@ export function memoryDynamicBodyNonEmpty(cwd: string): boolean {
 }
 
 /**
- * dynamic write：非空时先归档，再清空或覆盖写入；`truncate` 透传至 writeSection。
+ * dynamic write：非空时先归档，再清空或覆盖写入。
  * 索引重建由 CLI 层在本函数返回后处理。
  */
-export async function writeDynamicSection(
-  cwd: string,
-  text: string,
-  opts?: SectionWriteOptions
-): Promise<SectionWriteResult> {
+export async function writeDynamicSection(cwd: string, text: string): Promise<void> {
   if (memoryDynamicBodyNonEmpty(cwd)) {
     await archiveMemoryDynamic(cwd);
   }
   if (text.length === 0) {
     await clearMemoryDynamic(cwd);
-    return {};
+    return;
   }
-  return writeSection(cwd, "dynamicDetail", text, opts);
+  await writeSection(cwd, "dynamicDetail", text);
 }
 
 export function countMemoryArchiveFiles(cwd: string): number {

@@ -18,7 +18,7 @@ function readKbDynamicBody(dir: string): string {
   return parseFrontMatter(readFileSync(join(dir, ".apm", "kb", "dynamic", "detail.md"), "utf8")).content;
 }
 
-describe("write limits / stdin / validate / truncate", () => {
+describe("write limits / stdin / validate", () => {
   it("T-WL-01: new init config has max-only defaults", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
@@ -61,28 +61,6 @@ describe("write limits / stdin / validate / truncate", () => {
     expect(readMemoryBody(dir, "role.md")).toBe(before);
   });
 
-  it("T-WL-04: write --truncate shortens over-max body and warns on stderr", async () => {
-    const dir = newTempDir();
-    await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "role", "--max", "10"], dir);
-    const body = "x".repeat(20);
-    const { out, err } = await runCli(["role", "write", "--text", body, "--truncate"], dir);
-    expect(out).toBe("OK");
-    expect(err).toMatch(/truncated/i);
-    expect(readMemoryBody(dir, "role.md")).toBe("x".repeat(10));
-  });
-
-  it("T-WL-05: write --truncate keeps body when within max", async () => {
-    const dir = newTempDir();
-    await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "role", "--max", "10"], dir);
-    const body = "x".repeat(8);
-    const { out, err } = await runCli(["role", "write", "--text", body, "--truncate"], dir);
-    expect(out).toBe("OK");
-    expect(err).not.toMatch(/truncated/i);
-    expect(readMemoryBody(dir, "role.md")).toBe(body);
-  });
-
   it("T-WL-06: replace over max fails with got and leaves file unchanged", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
@@ -92,20 +70,6 @@ describe("write limits / stdin / validate / truncate", () => {
     const err = await runCliFail(["role", "replace", "--old", "a", "--new", "ZZZZZ"], dir);
     expect(err).toMatch(/got/i);
     expect(readMemoryBody(dir, "role.md")).toBe(before);
-  });
-
-  it("T-WL-06b: replace --truncate shortens over-max result and warns on stderr", async () => {
-    const dir = newTempDir();
-    await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "role", "--max", "5"], dir);
-    await runCli(["role", "write", "--text", "abcde"], dir);
-    const { out, err } = await runCli(
-      ["role", "replace", "--old", "a", "--new", "ZZZZZ", "--truncate"],
-      dir
-    );
-    expect(out).toBe("OK");
-    expect(err).toMatch(/truncated/i);
-    expect(readMemoryBody(dir, "role.md")).toBe("ZZZZZ");
   });
 
   it("T-WL-07: dynamic write --stdin matches equivalent --text", async () => {
