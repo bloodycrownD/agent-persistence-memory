@@ -112,8 +112,18 @@ export function readSectionContent(cwd: string, section: Section): string {
   return readSectionFile(p).content;
 }
 
+export type WriteSectionOptions = {
+  /** 是否写入 archive 快照；仅 CLI write 为 true，replace 等为 false。 */
+  snapshot?: boolean;
+};
+
 /** 写入记忆段正文；超长时抛错，不落盘。 */
-export async function writeSection(cwd: string, section: Section, text: string): Promise<void> {
+export async function writeSection(
+  cwd: string,
+  section: Section,
+  text: string,
+  opts: WriteSectionOptions = {}
+): Promise<void> {
   assertWithinMax(cwd, section, text);
 
   const p = sectionPath(cwd, section);
@@ -121,11 +131,12 @@ export async function writeSection(cwd: string, section: Section, text: string):
   const prev = readSectionFile(p);
   const createdAt = prev.meta?.createdAt ?? nowLocal();
   const payload = renderFrontMatter({ createdAt, updatedAt: nowLocal() }, text);
+  const snapshot = opts.snapshot ?? true;
   await withGlobalLock(paths.lock, async () => {
     await serialWrite(p, async () => {
       await atomicWrite(p, payload);
     });
-    if (isMemorySnapshotSection(section)) {
+    if (snapshot && isMemorySnapshotSection(section)) {
       const rel = buildMemorySnapshotArchiveRelPath(section);
       const snapshotAbs = resolveKbIndexedPath(paths.kbRoot, rel);
       mkdirSync(dirname(snapshotAbs), { recursive: true });
@@ -146,5 +157,5 @@ export async function replaceSection(
 ): Promise<void> {
   const content = readSectionContent(cwd, section);
   const next = applySubstringReplace(content, oldText, newText, replaceAll);
-  await writeSection(cwd, section, next);
+  await writeSection(cwd, section, next, { snapshot: false });
 }

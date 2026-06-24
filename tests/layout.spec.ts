@@ -4,6 +4,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildProgram } from "../src/index";
 import { newTempDir, runCli, runCliFail, runCliWithExit } from "./helpers/cli-harness";
+import {
+  countLayeredSnapshots,
+  latestLayeredSnapshotAbs,
+  listLayeredSnapshotRels,
+  readMemorySectionFile
+} from "./helpers/snapshot-archive";
 
 describe("apm cli v2 layout", () => {
   it("T1: init creates full v2 tree", async () => {
@@ -57,34 +63,40 @@ describe("apm cli v2 layout", () => {
     expect(dyn?.commands.find((c) => c.name() === "detail")).toBeUndefined();
   });
 
-  it("T4: dynamic write auto-archives previous content to kb/archive", async () => {
+  it("T4: dynamic write 每次写入新版分层 archive 快照", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     await runCli(["config", "set", "--section", "dynamicDetail", "--max", "200"], dir);
-    const body = "y".repeat(12);
-    await runCli(["dynamic", "write", "--text", body], dir);
-    const beforeSecond = readFileSync(join(dir, ".apm", "memory", "dynamic.md"), "utf8");
-    await runCli(["dynamic", "write", "--text", "n".repeat(12)], dir);
-    const archDir = join(dir, ".apm", "kb", "archive");
-    const files = readdirSync(archDir).filter((f) => /^dynamic-\d{4}-\d{2}-\d{2}-\d{6}\.md$/.test(f));
-    expect(files.length).toBe(1);
-    const archived = readFileSync(join(archDir, files[0]), "utf8");
-    expect(archived).toBe(beforeSecond);
-    expect(archived).toContain(body);
+    const body1 = "y".repeat(12);
+    const body2 = "n".repeat(12);
+    await runCli(["dynamic", "write", "--text", body1], dir);
+    await runCli(["dynamic", "write", "--text", body2], dir);
+    const kbRoot = join(dir, ".apm", "kb");
+    const target = readMemorySectionFile(dir, "dynamic");
+    expect(target).toContain(body2);
+    expect(target).not.toContain(body1);
+    const latest = latestLayeredSnapshotAbs(kbRoot, "dynamic");
+    expect(latest).toBeTruthy();
+    const snapshot = readFileSync(latest!, "utf8");
+    expect(snapshot).toBe(target);
+    expect(snapshot).toContain(body2);
+    expect(snapshot).not.toContain(body1);
   });
 
-  it("T5: dynamic write --text empty clears; archives non-empty first", async () => {
+  it("T5: dynamic write --text empty 清空正文并新增空模板快照", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     await runCli(["config", "set", "--section", "dynamicDetail", "--max", "200"], dir);
     await runCli(["dynamic", "write", "--text", "z".repeat(12)], dir);
-    const archDir = join(dir, ".apm", "kb", "archive");
-    const n = readdirSync(archDir).length;
+    const kbRoot = join(dir, ".apm", "kb");
+    const n = countLayeredSnapshots(kbRoot, "dynamic");
     await runCli(["dynamic", "write", "--text", ""], dir);
-    expect(readdirSync(archDir).length).toBe(n + 1);
-    const cleared = readFileSync(join(dir, ".apm", "memory", "dynamic.md"), "utf8");
+    expect(countLayeredSnapshots(kbRoot, "dynamic")).toBe(n + 1);
+    const cleared = readMemorySectionFile(dir, "dynamic");
     expect(cleared.startsWith("---\n")).toBe(true);
     expect(cleared.split("\n---\n")[1]?.trim() ?? "").toBe("");
+    const latest = latestLayeredSnapshotAbs(kbRoot, "dynamic");
+    expect(readFileSync(latest!, "utf8")).toBe(cleared);
   });
 
   it("T-DYN-CMD-01: removed dynamic archive and clear subcommands", async () => {
@@ -96,24 +108,23 @@ describe("apm cli v2 layout", () => {
     expect(clr.code).not.toBe(0);
   });
 
-  it("T-DYN-ARCH-02: first dynamic write on empty template does not archive", async () => {
+  it("T-DYN-ARCH-02: 首次 dynamic write 也产生分层 archive 快照", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     await runCli(["config", "set", "--section", "dynamicDetail", "--max", "200"], dir);
-    const archDir = join(dir, ".apm", "kb", "archive");
-    const archivePattern = /^dynamic-\d{4}-\d{2}-\d{2}-\d{6}\.md$/;
-    expect(readdirSync(archDir).filter((f) => archivePattern.test(f)).length).toBe(0);
+    const kbRoot = join(dir, ".apm", "kb");
+    expect(countLayeredSnapshots(kbRoot, "dynamic")).toBe(0);
     await runCli(["dynamic", "write", "--text", "x".repeat(12)], dir);
-    expect(readdirSync(archDir).filter((f) => archivePattern.test(f)).length).toBe(0);
+    expect(countLayeredSnapshots(kbRoot, "dynamic")).toBe(1);
   });
 
-  it("T-DYN-ARCH-04: empty write on empty dynamic body creates no archive", async () => {
+  it("T-DYN-ARCH-04: 空 dynamic 上 empty write 仍新增一条快照", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    const archDir = join(dir, ".apm", "kb", "archive");
-    const n = readdirSync(archDir).length;
+    const kbRoot = join(dir, ".apm", "kb");
+    const n = countLayeredSnapshots(kbRoot, "dynamic");
     await runCli(["dynamic", "write", "--text", ""], dir);
-    expect(readdirSync(archDir).length).toBe(n);
+    expect(countLayeredSnapshots(kbRoot, "dynamic")).toBe(n + 1);
   });
 
   it("T-DYN-ESC-01: dynamic write unescapes \\n in --text", async () => {
@@ -151,7 +162,7 @@ describe("apm cli v2 layout", () => {
     expect(afterMtime > beforeMtime || afterHash !== beforeHash).toBe(true);
   });
 
-  it("T-IDX-02: dynamic write archive is searchable after auto rebuild", async () => {
+  it("T-IDX-02: dynamic write 分层 archive 快照可被 kb search 检索", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     await runCli(["config", "set", "--section", "dynamicDetail", "--max", "200"], dir);
@@ -160,10 +171,12 @@ describe("apm cli v2 layout", () => {
     await runCli(["dynamic", "write", "--text", body1], dir);
     await runCli(["dynamic", "write", "--text", "b".repeat(12)], dir);
     const out = await runCli(["kb", "search", "--q", keyword], dir);
-    expect(out.out).toMatch(/archive\/dynamic-/);
-    const archived = readdirSync(join(dir, ".apm", "kb", "archive")).find((f) => /^dynamic-/.test(f));
-    expect(archived).toBeTruthy();
-    expect(readFileSync(join(dir, ".apm", "kb", "archive", archived!), "utf8")).toContain(keyword);
+    expect(out.out).toMatch(/archive\/\d{4}\/\d{2}\/\d{2}\/dynamic\//);
+    const kbRoot = join(dir, ".apm", "kb");
+    const hit = listLayeredSnapshotRels(kbRoot)
+      .filter((rel) => rel.includes("/dynamic/"))
+      .find((rel) => readFileSync(join(kbRoot, rel), "utf8").includes(keyword));
+    expect(hit).toBeTruthy();
   });
 
   it("T6: kb write, index rebuild, search finds expected doc in top results", async () => {

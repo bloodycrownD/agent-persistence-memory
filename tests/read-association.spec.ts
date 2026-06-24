@@ -11,6 +11,7 @@ import {
   assocPercentHeaders,
   assocPercentValues,
   setupAssocWorkspace,
+  seedMemorySection,
   trimKbIndexFixtures,
   writeKbArchiveDoc
 } from "./helpers/read-association";
@@ -67,7 +68,7 @@ describe("apm read association area", () => {
     const dir = newTempDir();
     await setupAssocWorkspace(dir);
     const kw = "zzassoc_two_only";
-    await runCli(["role", "write", "--text", kw], dir);
+    seedMemorySection(dir, "role", kw);
     await runCli(["kb", "write", "--path", "t0.md", "--text", `# T0\n${kw}\n`], dir);
     await runCli(["kb", "write", "--path", "t1.md", "--text", `# T1\n${kw}\n`], dir);
     await runCli(["kb", "index", "rebuild"], dir);
@@ -241,7 +242,7 @@ describe("apm read association area", () => {
   it("T-READ-ASSOC-11: no hits omits association section", async () => {
     const dir = newTempDir();
     await setupAssocWorkspace(dir);
-    await runCli(["role", "write", "--text", "zzassoc_no_overlap_ctx"], dir);
+    seedMemorySection(dir, "role", "zzassoc_no_overlap_ctx");
     await runCli(["kb", "write", "--path", "unrelated.md", "--text", "# U\n\nzzassoc_kb_other_token\n"], dir);
     await runCli(["kb", "index", "rebuild"], dir);
     const { out } = await runCli(["read"], dir);
@@ -331,7 +332,7 @@ describe("apm read association area", () => {
     await setupAssocWorkspace(dir);
     const kw = "zzassoc_long_line_kw";
     const longBody = "x".repeat(130);
-    await runCli(["role", "write", "--text", kw], dir);
+    seedMemorySection(dir, "role", kw);
     await runCli(
       [
         "kb",

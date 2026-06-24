@@ -1,5 +1,6 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { renderFrontMatter } from "../../src/storage/markdown";
 import { runCli } from "./cli-harness";
 
 export function assocPercentHeaders(out: string): string[] {
@@ -40,6 +41,17 @@ export function neutralizeKbDynamicDetail(dir: string): void {
 export function trimKbIndexFixtures(dir: string): void {
   removeKbDocsReadme(dir);
   neutralizeKbDynamicDetail(dir);
+}
+
+/** 直接写入 memory 段正文（不经过 CLI write，不产生 archive 快照）。 */
+export function seedMemorySection(
+  dir: string,
+  section: "role" | "persist" | "dynamic",
+  body: string
+): void {
+  const file = section === "role" ? "role.md" : section === "persist" ? "persist.md" : "dynamic.md";
+  const meta = { createdAt: "2026-01-01 00:00:00", updatedAt: "2026-01-01 00:00:00" };
+  writeFileSync(join(dir, ".apm", "memory", file), renderFrontMatter(meta, body), "utf8");
 }
 
 export function writeKbArchiveDoc(dir: string, filename: string, body: string): void {

@@ -29,11 +29,11 @@ apm persist write --text "…"  # 可选：长期结论
   memory/dynamic.md    # 动态记忆（当前任务）
   kb/docs/             # 知识库 .md（可嵌套）
   kb/dynamic/detail.md
-  kb/archive/          # dynamic 覆盖前自动归档
+  kb/archive/          # memory 三段 write 时写入的分层快照（见下文）
   kb/index/search.json.gz
 ```
 
-`apm kb write --path` 的路径相对 `kb/docs/`（如 `Iterations/foo/prd.md`）。检索与联想中的路径相对 `kb/`（如 `docs/foo.md`、`archive/dynamic-....md`）。
+`apm kb write --path` 的路径相对 `kb/docs/`（如 `Iterations/foo/prd.md`）。检索与联想中的路径相对 `kb/`（如 `docs/foo.md`、`archive/2026/06/18/dynamic/143052127.md`；旧版扁平 `archive/dynamic-....md` 仍可被索引）。
 
 ## 默认长度上限（仅 max，无下限）
 
@@ -113,18 +113,30 @@ echo "草稿" | apm persist validate
 #### `replace` 其他说明
 
 - `replace`：`--old` 须与 `show`/`read` 正文**原样**匹配；默认只换第一次，全换加 `--all`。
+- `replace` **不**写入 archive 快照（仅 `write` 触发快照）。
 - 全量覆盖用 `write`。
 - 写入时不要手写 YAML front matter。
 - `--old` / `--new` 支持转义（`kb write` 的 `--text` / stdin 同理）。
 
-### `dynamic` 与归档
+### memory 三段 write 与 archive 快照
 
-| 命令 | 行为 |
-|------|------|
-| `dynamic write` | 当前正文非空时先写入 `kb/archive/dynamic-<时间戳>.md`，再覆盖 `memory/dynamic.md` |
-| `dynamic write --text ""` | 清空 dynamic（非空则先归档） |
-| `dynamic replace` | 只改正文，不归档 |
-| `dynamic validate` | 仅校验长度，不归档、不写盘 |
+每次 `role` / `persist` / `dynamic` 的 **`write`** 会将**本次落盘全文**（含 YAML front matter）同时写入目标文件与分层 archive 快照；快照内容与目标文件**完全相同**（存新版，非覆盖前的旧版）。
+
+| 路径模式（相对 `kb/`） | 说明 |
+|------------------------|------|
+| `archive/{yyyy}/{MM}/{dd}/role/{HHmmssSSS}.md` | role write 快照 |
+| `archive/{yyyy}/{MM}/{dd}/persist/{HHmmssSSS}.md` | persist write 快照 |
+| `archive/{yyyy}/{MM}/{dd}/dynamic/{HHmmssSSS}.md` | dynamic write 快照 |
+
+| 命令 | archive 快照 |
+|------|--------------|
+| `role` / `persist` / `dynamic` **`write`** | 每次 +1 条分层快照 |
+| `dynamic write --text ""` | 目标变为空模板，仍 +1 条空模板快照 |
+| `replace` | **不**新增快照 |
+| `validate` | **不**写盘、不归档 |
+| `kb dynamic write` | **不**写入 `archive/`（仅更新 `kb/dynamic/detail.md`） |
+
+旧版扁平 `archive/dynamic-<时间戳>.md` 若已存在，索引 rebuild 后仍可检索，与新分层路径共存。
 
 ### 知识库
 
