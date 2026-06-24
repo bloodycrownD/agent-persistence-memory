@@ -1,5 +1,10 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { z } from "zod";
+import {
+  buildMemorySnapshotArchiveRelPath,
+  isMemorySnapshotSection
+} from "../core/memory-snapshot-path";
 import { nowLocal } from "../core/time";
 import { applySubstringReplace } from "../core/substring-replace";
 import { countChars } from "../core/validate";
@@ -10,6 +15,7 @@ import { withGlobalLock } from "../storage/fs-lock";
 import { serialWrite } from "../storage/serial";
 import { atomicWrite } from "../storage/fs-atomic";
 import { readConfig } from "./config-service";
+import { resolveKbIndexedPath } from "./kb-index-service";
 import type { Limits, Section } from "../schemas/config";
 
 function sectionPath(cwd: string, section: Section): string {
@@ -119,6 +125,14 @@ export async function writeSection(cwd: string, section: Section, text: string):
     await serialWrite(p, async () => {
       await atomicWrite(p, payload);
     });
+    if (isMemorySnapshotSection(section)) {
+      const rel = buildMemorySnapshotArchiveRelPath(section);
+      const snapshotAbs = resolveKbIndexedPath(paths.kbRoot, rel);
+      mkdirSync(dirname(snapshotAbs), { recursive: true });
+      await serialWrite(snapshotAbs, async () => {
+        await atomicWrite(snapshotAbs, payload);
+      });
+    }
   });
 }
 
