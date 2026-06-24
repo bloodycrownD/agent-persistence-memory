@@ -3,7 +3,6 @@ import { resolveCliBodyText } from "../../core/cli-body-input";
 import { unescapeCliText } from "../../core/cli-text-escape";
 import { ensureWorkspace } from "../../storage/paths";
 import { toLineNumbered } from "../../formatters/line-number";
-import { writeDynamicSection } from "../../services/dynamic-archive-service";
 import { rebuildKbIndex } from "../../services/kb-index-service";
 import {
   readSectionContent,
@@ -36,11 +35,7 @@ export function registerSectionCommands(cmd: Command, section: Section): void {
       const cwd = process.cwd();
       ensureWorkspace(cwd);
       const text = await resolveCliBodyText(opts);
-      if (section === "dynamicDetail") {
-        await writeDynamicSection(cwd, text);
-      } else {
-        await writeSection(cwd, section, text);
-      }
+      await writeSection(cwd, section, text);
       await afterMemorySectionMutation(cwd, section);
       console.log("OK");
     });
