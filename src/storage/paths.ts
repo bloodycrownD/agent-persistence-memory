@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { nowLocal } from "../core/time";
 import { renderFrontMatter } from "./markdown";
@@ -8,7 +8,7 @@ import { migrateLegacyStatusIntoConfig } from "../services/workspace-config-migr
 import { ConfigSchema } from "../schemas/config";
 
 /**
- * Canonical v2 paths under `.apm/`: memory (role/persist/dynamic + archive),
+ * Canonical paths under `.apm/`: memory (role/persist/dynamic + archive),
  * kb (docs, dynamic/detail, index/search.json.gz). Callers use this object
  * instead of hard-coding layout segments.
  */
@@ -34,29 +34,32 @@ function isDir(path: string): boolean {
   return existsSync(path) && statSync(path).isDirectory();
 }
 
-/** True if `.apm` uses pre-v2 paths (no auto-migration). */
+/** True if `.apm` uses an unsupported pre-migration layout (no auto-migration). */
 export function isLegacyApmLayout(cwd: string): boolean {
   const root = join(cwd, ".apm");
   if (!existsSync(root)) return false;
   if (existsSync(join(root, "persistence"))) return true;
-  // Pre-v2 task dynamic lived under `.apm/dynamic/` (e.g. detail.md). Any such tree
-  // coexisting with a partial v2 upgrade is unsafe; refuse until user removes it.
-  if (existsSync(join(root, "dynamic"))) return true;
   const legacyRootRole = existsSync(join(root, "role.md"));
-  const v2MemoryRole = existsSync(join(root, "memory", "role.md"));
-  if (legacyRootRole && !v2MemoryRole) return true;
+  const memoryRole = existsSync(join(root, "memory", "role.md"));
+  if (legacyRootRole && !memoryRole) return true;
   return false;
 }
 
 export function assertNotLegacyApmLayout(cwd: string): void {
   if (!isLegacyApmLayout(cwd)) return;
   throw new Error(
-    "Old .apm layout detected (e.g. `.apm/persistence`, `.apm/dynamic/`, or `.apm/role.md` without `.apm/memory/role.md`). " +
+    "Old .apm layout detected (e.g. `.apm/persistence` or `.apm/role.md` without `.apm/memory/role.md`). " +
       "Automatic migration is not supported. Back up your data, remove or replace the old .apm tree, then run `apm init`."
   );
 }
 
-export function isV2WorkspaceComplete(cwd: string): boolean {
+/** Remove deprecated `.apm/dynamic/` tree; task dynamic now lives in `memory/dynamic.md`. */
+function removeLegacyDynamicDir(cwd: string): void {
+  const legacy = join(cwd, ".apm", "dynamic");
+  if (existsSync(legacy)) rmSync(legacy, { recursive: true, force: true });
+}
+
+export function isWorkspaceComplete(cwd: string): boolean {
   const p = apmPaths(cwd);
   if (!existsSync(p.root)) return false;
   return (
@@ -71,8 +74,9 @@ export function isV2WorkspaceComplete(cwd: string): boolean {
   );
 }
 
-/** Idempotent v2 tree + default section files and kb/docs placeholder. */
-export function createWorkspaceV2Idempotent(cwd: string): void {
+/** Idempotent workspace tree + default section files and kb/docs placeholder. */
+export function createWorkspaceIdempotent(cwd: string): void {
+  removeLegacyDynamicDir(cwd);
   const p = apmPaths(cwd);
   mkdirSync(p.root, { recursive: true });
   mkdirSync(join(p.root, "memory"), { recursive: true });
@@ -110,28 +114,34 @@ export function createWorkspaceV2Idempotent(cwd: string): void {
 }
 
 /**
- * `apm init`: refuse legacy trees, then create or repair the v2 layout without
- * overwriting existing section bodies.
+ * `apm init`: refuse legacy trees, then create or repair the workspace layout
+ * without overwriting existing section bodies.
  */
 export function initApmWorkspace(cwd: string): void {
   assertNotLegacyApmLayout(cwd);
-  createWorkspaceV2Idempotent(cwd);
+  createWorkspaceIdempotent(cwd);
 }
 
 /**
- * Prepare `.apm` for normal commands: reject legacy layout; lazily create a
- * full v2 tree when `.apm` is missing; otherwise require a complete v2 tree
- * (run `apm init` if incomplete).
+ * Prepare `.apm` for normal commands: reject legacy layout; create or repair
+ * the full workspace tree when `.apm` is missing or incomplete.
  */
 export function ensureWorkspace(cwd: string): void {
   assertNotLegacyApmLayout(cwd);
   const p = apmPaths(cwd);
   if (!existsSync(p.root)) {
-    createWorkspaceV2Idempotent(cwd);
+    createWorkspaceIdempotent(cwd);
     return;
   }
   migrateLegacyStatusIntoConfig(cwd);
-  if (!isV2WorkspaceComplete(cwd)) {
-    throw new Error("Incomplete .apm workspace (v2). Run `apm init` to create the full directory layout.");
+  removeLegacyDynamicDir(cwd);
+  if (!isWorkspaceComplete(cwd)) {
+    createWorkspaceIdempotent(cwd);
   }
 }
+
+/** @deprecated Use {@link isWorkspaceComplete}. */
+export const isV2WorkspaceComplete = isWorkspaceComplete;
+
+/** @deprecated Use {@link createWorkspaceIdempotent}. */
+export const createWorkspaceV2Idempotent = createWorkspaceIdempotent;

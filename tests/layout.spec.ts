@@ -11,8 +11,8 @@ import {
   readMemorySectionFile
 } from "./helpers/snapshot-archive";
 
-describe("apm cli v2 layout", () => {
-  it("T1: init creates full v2 tree", async () => {
+describe("apm cli workspace layout", () => {
+  it("T1: init creates full workspace tree", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     expect(existsSync(join(dir, ".apm", "memory", "role.md"))).toBe(true);
@@ -38,13 +38,21 @@ describe("apm cli v2 layout", () => {
     expect(message).toMatch(/apm init/i);
   });
 
-  it("T2b: legacy .apm/dynamic tree is rejected", async () => {
+  it("T2b: legacy .apm/dynamic tree is removed and commands succeed", async () => {
     const dir = newTempDir();
+    await runCli(["init"], dir);
     mkdirSync(join(dir, ".apm", "dynamic"), { recursive: true });
     writeFileSync(join(dir, ".apm", "dynamic", "detail.md"), "---\n---\nold\n", "utf8");
-    const message = await runCliFail(["role", "show"], dir);
-    expect(message).toMatch(/Old \.apm layout|old \.apm layout/i);
-    expect(message).toMatch(/\.apm\/dynamic|dynamic/i);
+    await runCli(["role", "show"], dir);
+    expect(existsSync(join(dir, ".apm", "dynamic"))).toBe(false);
+  });
+
+  it("T2c: incomplete workspace is auto-repaired on first command", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    rmSync(join(dir, ".apm", "kb", "dynamic", "detail.md"), { force: true });
+    await runCli(["role", "show"], dir);
+    expect(existsSync(join(dir, ".apm", "kb", "dynamic", "detail.md"))).toBe(true);
   });
 
   it("T3: dynamic uses flat show/write/replace (no detail subcommand)", async () => {
@@ -213,7 +221,7 @@ describe("apm cli v2 layout", () => {
     expect(err).toMatch(/rebuild/i);
   });
 
-  it("T8: role/persist/config/read on v2 paths", async () => {
+  it("T8: role/persist/config/read on canonical paths", async () => {
     const dir = newTempDir();
     await runCli(["dynamic", "show"], dir);
     expect(existsSync(join(dir, ".apm", "memory", "dynamic.md"))).toBe(true);

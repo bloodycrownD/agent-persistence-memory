@@ -18,6 +18,7 @@ apm persist write --text "…"  # 可选：长期结论
 
 - 在**项目根目录**（将创建或使用 `.apm/`）执行。
 - 入口：`apm` 或 `npx apm`（本仓库需先 `npm run build`）。
+- **工作区自动补齐**：任意命令首次执行时会创建或补全 `.apm/` 目录树；`apm init` 等价且幂等。废弃的根级 `.apm/dynamic/` 若存在会被自动删除（任务 dynamic 在 `memory/dynamic.md`）。
 
 ## 工作区
 
@@ -202,13 +203,13 @@ apm dynamic write --text "草稿"
 | 路径 | 用途 |
 |------|------|
 | `.apm/memory/` | CLI 外置记忆，`apm read` 使用 |
+| `.apm/dynamic/`（根下） | **已废弃**，勿手动创建；存在时会被 CLI 自动删除 |
 | 仓库内其他 `memory/` | 不参与 `apm read`，不要当作 `.apm` 使用 |
 
 ## 故障排查
 
 | 现象 | 处理 |
 |------|------|
-| `Incomplete .apm workspace` | `apm init` |
 | `Knowledge index missing` | `apm kb index rebuild` |
 | 联想区无结果 | 记忆与 kb 有共同词；`rebuild` |
 | `kb write` 后搜不到 | `apm kb index rebuild` |
