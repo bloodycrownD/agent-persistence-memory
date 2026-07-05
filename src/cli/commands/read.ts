@@ -6,7 +6,7 @@
 
 import type { Command } from "commander";
 import { ensureWorkspace } from "../../storage/paths";
-import { readSectionContent } from "../../services/sections-service";
+import { readSectionContentRelaxed } from "../../services/sections-service";
 import {
   computeReadAssociation,
   formatAssociationSection
@@ -34,14 +34,13 @@ export function registerRead(program: Command): void {
 
       for (const { id, label } of SECTION_MAP) {
         try {
-          const content = readSectionContent(cwd, id).trim();
-          // Only include sections that have meaningful content to keep the Agent's context clean.
+          const content = readSectionContentRelaxed(cwd, id).trim();
+          // 仅输出有实质内容的段，保持 Agent 上下文简洁。
           if (content.length > 0) {
             parts.push(`# ${label}\n\n${content}`);
           }
         } catch (e) {
-          // Report errors (like YAML corruption) instead of silently skipping,
-          // so the user knows why a section is missing from the output.
+          // 文件缺失等 I/O 错误仍告警，避免段静默消失。
           const msg = e instanceof Error ? e.message : String(e);
           console.error(`Warning: Failed to read section "${label}": ${msg}`);
         }

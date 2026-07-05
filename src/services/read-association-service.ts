@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { apmPaths, ensureWorkspace } from "../storage/paths";
 import { isKbNoiseToken } from "../core/kb-stopwords";
 import type { Section } from "../schemas/config";
-import { readSectionContent } from "./sections-service";
+import { readSectionContentRelaxed } from "./sections-service";
 import {
   kbTokenize,
   loadKbMiniSearch,
@@ -39,17 +39,17 @@ export type ReadAssociationResult =
     };
 
 /**
- * Merge role, persist, and dynamic memory bodies (front matter stripped) for kb search.
- * Failed section reads are skipped, matching `apm read` warn-and-continue behavior.
+ * 合并 role、persist、dynamic 正文（宽松剥离 front matter）供 kb 检索；
+ * 与 `apm read` 使用相同的宽松读法；I/O 失败段跳过。
  */
 export function buildReadQueryContext(cwd: string): string {
   const parts: string[] = [];
   for (const id of QUERY_SECTIONS) {
     try {
-      const content = readSectionContent(cwd, id).trim();
+      const content = readSectionContentRelaxed(cwd, id).trim();
       if (content.length > 0) parts.push(content);
     } catch {
-      /* skip unreadable sections */
+      /* 跳过无法读取的段 */
     }
   }
   return parts.join("\n\n");

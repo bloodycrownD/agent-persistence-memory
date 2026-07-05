@@ -75,6 +75,24 @@ const SectionMetaSchema = z
   })
   .strict();
 
+/**
+ * 宽松提取记忆段正文（供 `apm read` 与联想区使用）：
+ * - 不以 `---\n` 开头 → 全文作为正文；
+ * - 有 front matter 且 `parseFrontMatter` 成功 → 返回剥离后的正文（不校验 meta schema）；
+ * - `parseFrontMatter` 失败 → 保留全文作为正文。
+ */
+function extractSectionBodyRelaxed(raw: string): string {
+  let body = raw.replace(/\r\n/g, "\n");
+  if (!body.startsWith("---\n")) {
+    return body;
+  }
+  try {
+    return parseFrontMatter(body).content;
+  } catch {
+    return body;
+  }
+}
+
 function readSectionFile(path: string): { meta: SectionMeta | null; content: string } {
   const raw = readFileSync(path, "utf8");
   let parsed: { meta: unknown; content: string };
@@ -107,6 +125,15 @@ function readSectionFile(path: string): { meta: SectionMeta | null; content: str
 export function readSectionContent(cwd: string, section: Section): string {
   const p = sectionPath(cwd, section);
   return readSectionFile(p).content;
+}
+
+/**
+ * 宽松读取记忆段正文（不校验 front matter）；`show`/`write`/`replace` 仍应使用 {@link readSectionContent}。
+ */
+export function readSectionContentRelaxed(cwd: string, section: Section): string {
+  const p = sectionPath(cwd, section);
+  const raw = readFileSync(p, "utf8");
+  return extractSectionBodyRelaxed(raw);
 }
 
 export type WriteSectionOptions = {
