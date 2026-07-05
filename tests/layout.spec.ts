@@ -246,9 +246,46 @@ describe("apm cli workspace layout", () => {
     await runCli(["persist", "write", "--text", "good-persist"], dir);
 
     const res = await runCli(["read"], dir);
-    expect(res.err).toContain('Warning: Failed to read section "角色"');
+    expect(res.err).not.toContain('Warning: Failed to read section "角色"');
+    expect(res.out).toContain("# 角色");
+    expect(res.out).toContain("corrupted content");
     expect(res.out).toContain("# 持久记忆");
     expect(res.out).toContain("good-persist");
+  });
+
+  it("T-READ-RELAX: read tolerates missing front matter while show stays strict", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    const rolePath = join(dir, ".apm", "memory", "role.md");
+    writeFileSync(rolePath, "plain body without front matter", "utf8");
+
+    const readRes = await runCli(["read"], dir);
+    expect(readRes.out).toContain("# 角色");
+    expect(readRes.out).toContain("plain body without front matter");
+    expect(readRes.err).not.toMatch(/Warning: Failed to read section "角色"/);
+
+    const showErr = await runCliFail(["role", "show"], dir);
+    expect(showErr).toContain("Invalid section front matter");
+    expect(showErr).toContain("role.md");
+  });
+
+  it("T-READ-RELAX: read tolerates invalid front matter meta while show fails", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    const rolePath = join(dir, ".apm", "memory", "role.md");
+    writeFileSync(
+      rolePath,
+      ['---', 'createdAt: "bad-time"', 'updatedAt: "2026-01-01 10:00:00"', "---", "body after bad fm"].join("\n"),
+      "utf8"
+    );
+
+    const readRes = await runCli(["read"], dir);
+    expect(readRes.out).toContain("# 角色");
+    expect(readRes.out).toContain("body after bad fm");
+
+    const showErr = await runCliFail(["role", "show"], dir);
+    expect(showErr).toContain("Invalid section front matter");
+    expect(showErr).toContain("createdAt");
   });
 
   it("registers init and kb", () => {
