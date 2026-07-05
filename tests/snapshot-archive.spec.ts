@@ -19,7 +19,6 @@ describe("memory-snapshot-path 单元", () => {
     expect(isMemorySnapshotSection("role")).toBe(true);
     expect(isMemorySnapshotSection("persist")).toBe(true);
     expect(isMemorySnapshotSection("dynamicDetail")).toBe(true);
-    expect(isMemorySnapshotSection("kbDynamicDetail")).toBe(false);
     expect(memorySnapshotSectionDir("dynamicDetail")).toBe("dynamic");
     expect(memorySnapshotSectionDir("role")).toBe("role");
     expect(memorySnapshotSectionDir("persist")).toBe("persist");
@@ -42,7 +41,6 @@ describe("memory write snapshot archive", () => {
     await runCli(["config", "set", "--section", "role", "--max", "200"], dir);
     await runCli(["config", "set", "--section", "persist", "--max", "200"], dir);
     await runCli(["config", "set", "--section", "dynamicDetail", "--max", "200"], dir);
-    await runCli(["config", "set", "--section", "kbDynamicDetail", "--max", "200"], dir);
   }
 
   it("T-SA-01: role write 写入目标与 role 分层快照且全文一致", async () => {
@@ -160,13 +158,5 @@ describe("memory write snapshot archive", () => {
     expect(searchLegacy.out).toContain(legacyName);
     const searchNew = await runCli(["kb", "search", "--q", "layered snapshot"], dir);
     expect(searchNew.out).toMatch(/archive\/\d{4}\/\d{2}\/\d{2}\/dynamic\//);
-  });
-
-  it("T-SA-11: kb dynamic write 不新增 archive 分层快照", async () => {
-    const dir = newTempDir();
-    await initWithLimits(dir);
-    const nBefore = countLayeredSnapshots(kbRoot(dir));
-    await runCli(["kb", "dynamic", "write", "--text", "kb_dyn_only_body"], dir);
-    expect(countLayeredSnapshots(kbRoot(dir))).toBe(nBefore);
   });
 });

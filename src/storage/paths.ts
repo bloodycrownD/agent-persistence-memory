@@ -9,7 +9,7 @@ import { ConfigSchema } from "../schemas/config";
 
 /**
  * Canonical paths under `.apm/`: memory (role/persist/dynamic + archive),
- * kb (docs, dynamic/detail, index/search.json.gz). Callers use this object
+ * kb (docs, index/search.json.gz). Callers use this object
  * instead of hard-coding layout segments.
  */
 export function apmPaths(cwd: string) {
@@ -24,7 +24,6 @@ export function apmPaths(cwd: string) {
     kbRoot: join(root, "kb"),
     kbArchiveDir: join(root, "kb", "archive"),
     kbDocs: join(root, "kb", "docs"),
-    kbDynamicDetail: join(root, "kb", "dynamic", "detail.md"),
     kbIndexDir: join(root, "kb", "index"),
     kbSearchIndexGz: join(root, "kb", "index", "search.json.gz")
   };
@@ -53,10 +52,13 @@ export function assertNotLegacyApmLayout(cwd: string): void {
   );
 }
 
-/** Remove deprecated `.apm/dynamic/` tree; task dynamic now lives in `memory/dynamic.md`. */
-function removeLegacyDynamicDir(cwd: string): void {
-  const legacy = join(cwd, ".apm", "dynamic");
-  if (existsSync(legacy)) rmSync(legacy, { recursive: true, force: true });
+/** Remove deprecated dynamic paths; task dynamic lives in `memory/dynamic.md`. */
+function removeDeprecatedDynamicPaths(cwd: string): void {
+  const root = join(cwd, ".apm");
+  for (const rel of ["dynamic", join("kb", "dynamic")]) {
+    const path = join(root, rel);
+    if (existsSync(path)) rmSync(path, { recursive: true, force: true });
+  }
 }
 
 export function isWorkspaceComplete(cwd: string): boolean {
@@ -68,7 +70,6 @@ export function isWorkspaceComplete(cwd: string): boolean {
     existsSync(p.memoryDynamic) &&
     isDir(p.kbArchiveDir) &&
     isDir(p.kbDocs) &&
-    existsSync(p.kbDynamicDetail) &&
     isDir(p.kbIndexDir) &&
     existsSync(p.config)
   );
@@ -76,12 +77,11 @@ export function isWorkspaceComplete(cwd: string): boolean {
 
 /** Idempotent workspace tree + default section files and kb/docs placeholder. */
 export function createWorkspaceIdempotent(cwd: string): void {
-  removeLegacyDynamicDir(cwd);
+  removeDeprecatedDynamicPaths(cwd);
   const p = apmPaths(cwd);
   mkdirSync(p.root, { recursive: true });
   mkdirSync(join(p.root, "memory"), { recursive: true });
   mkdirSync(p.kbArchiveDir, { recursive: true });
-  mkdirSync(join(p.root, "kb", "dynamic"), { recursive: true });
   mkdirSync(p.kbDocs, { recursive: true });
   mkdirSync(p.kbIndexDir, { recursive: true });
 
@@ -101,7 +101,6 @@ export function createWorkspaceIdempotent(cwd: string): void {
   if (!existsSync(p.memoryRole)) writeFileSync(p.memoryRole, emptySection, "utf8");
   if (!existsSync(p.memoryPersist)) writeFileSync(p.memoryPersist, emptySection, "utf8");
   if (!existsSync(p.memoryDynamic)) writeFileSync(p.memoryDynamic, emptySection, "utf8");
-  if (!existsSync(p.kbDynamicDetail)) writeFileSync(p.kbDynamicDetail, emptySection, "utf8");
 
   const kbReadme = join(p.kbDocs, "README.md");
   if (!existsSync(kbReadme)) {
@@ -134,7 +133,7 @@ export function ensureWorkspace(cwd: string): void {
     return;
   }
   migrateLegacyStatusIntoConfig(cwd);
-  removeLegacyDynamicDir(cwd);
+  removeDeprecatedDynamicPaths(cwd);
   if (!isWorkspaceComplete(cwd)) {
     createWorkspaceIdempotent(cwd);
   }

@@ -32,13 +32,24 @@ describe("workspace paths", () => {
   it("auto-repairs incomplete workspace on ensureWorkspace", () => {
     dir = newTempDir();
     createWorkspaceIdempotent(dir);
-    rmSync(join(dir, ".apm", "kb", "dynamic", "detail.md"), { force: true });
+    rmSync(join(dir, ".apm", "memory", "persist.md"), { force: true });
     expect(isWorkspaceComplete(dir)).toBe(false);
 
     ensureWorkspace(dir);
 
     expect(isWorkspaceComplete(dir)).toBe(true);
-    expect(existsSync(join(dir, ".apm", "kb", "dynamic", "detail.md"))).toBe(true);
+    expect(existsSync(join(dir, ".apm", "memory", "persist.md"))).toBe(true);
+  });
+
+  it("removes deprecated kb/dynamic on ensureWorkspace", () => {
+    dir = newTempDir();
+    createWorkspaceIdempotent(dir);
+    mkdirSync(join(dir, ".apm", "kb", "dynamic"), { recursive: true });
+    writeFileSync(join(dir, ".apm", "kb", "dynamic", "detail.md"), "old", "utf8");
+
+    ensureWorkspace(dir);
+
+    expect(existsSync(join(dir, ".apm", "kb", "dynamic"))).toBe(false);
   });
 
   it("creates workspace when .apm is missing", () => {

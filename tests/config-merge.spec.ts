@@ -30,7 +30,7 @@ describe("config.json / status.json merge", () => {
     await runCli(["init"], dir);
     writeFileSync(
       join(dir, ".apm", "config.json"),
-      JSON.stringify({ limits: { role: { min: 1, max: 10 }, persist: { min: 1, max: 10 }, dynamicDetail: { min: 1, max: 10 }, kbDynamicDetail: { min: 1, max: 10 } } }, null, 2),
+      JSON.stringify({ limits: { role: { min: 1, max: 10 }, persist: { min: 1, max: 10 }, dynamicDetail: { min: 1, max: 10 } } }, null, 2),
       "utf8"
     );
     writeFileSync(
@@ -50,8 +50,7 @@ describe("config.json / status.json merge", () => {
     expect(cfg.limits.role).toEqual({ max: 10 });
     expect(cfg.limits.persist).toEqual({ max: 10 });
     expect(cfg.limits.dynamicDetail).toEqual({ max: 10 });
-    expect(cfg.limits.kbDynamicDetail).toEqual({ max: 10 });
-    for (const key of ["role", "persist", "dynamicDetail", "kbDynamicDetail"] as const) {
+    for (const key of ["role", "persist", "dynamicDetail"] as const) {
       expect(cfg.limits[key]).not.toHaveProperty("min");
     }
   });

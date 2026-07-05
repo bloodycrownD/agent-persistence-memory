@@ -22,13 +22,11 @@ function sectionPath(cwd: string, section: Section): string {
   const p = apmPaths(cwd);
   if (section === "role") return p.memoryRole;
   if (section === "persist") return p.memoryPersist;
-  if (section === "dynamicDetail") return p.memoryDynamic;
-  return p.kbDynamicDetail;
+  return p.memoryDynamic;
 }
 
 function sectionLabel(section: Section): string {
   if (section === "dynamicDetail") return "dynamic";
-  if (section === "kbDynamicDetail") return "kb dynamic";
   return section;
 }
 
@@ -36,8 +34,7 @@ function getSectionLimits(cwd: string, section: Section): Limits {
   const cfg = readConfig(cwd);
   if (section === "role") return cfg.limits.role;
   if (section === "persist") return cfg.limits.persist;
-  if (section === "dynamicDetail") return cfg.limits.dynamicDetail;
-  return cfg.limits.kbDynamicDetail;
+  return cfg.limits.dynamicDetail;
 }
 
 /** 生成记忆段超长报错文案（英文，与 CLI 一致）。 */

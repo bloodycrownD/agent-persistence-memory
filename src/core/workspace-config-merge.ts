@@ -36,8 +36,7 @@ export function mergeConfigWithDefaults(raw: unknown): z.input<typeof ConfigSche
     limits: {
       role: pickLimit("role"),
       persist: pickLimit("persist"),
-      dynamicDetail: pickLimit("dynamicDetail"),
-      kbDynamicDetail: pickLimit("kbDynamicDetail")
+      dynamicDetail: pickLimit("dynamicDetail")
     },
     initializedAt: pickTimestamp(o.initializedAt, now),
     updatedAt: pickTimestamp(o.updatedAt, now),

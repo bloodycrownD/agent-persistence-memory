@@ -14,10 +14,6 @@ function readMemoryBody(dir: string, file: "role.md" | "persist.md" | "dynamic.m
   return parseFrontMatter(readFileSync(join(dir, ".apm", "memory", file), "utf8")).content;
 }
 
-function readKbDynamicBody(dir: string): string {
-  return parseFrontMatter(readFileSync(join(dir, ".apm", "kb", "dynamic", "detail.md"), "utf8")).content;
-}
-
 describe("write limits / stdin / validate", () => {
   it("T-WL-01: new init config has max-only defaults", async () => {
     const dir = newTempDir();
@@ -26,8 +22,7 @@ describe("write limits / stdin / validate", () => {
     expect(cfg.limits.role).toEqual({ max: 100 });
     expect(cfg.limits.persist).toEqual({ max: 800 });
     expect(cfg.limits.dynamicDetail).toEqual({ max: 1500 });
-    expect(cfg.limits.kbDynamicDetail).toEqual({ max: 1500 });
-    for (const key of ["role", "persist", "dynamicDetail", "kbDynamicDetail"] as const) {
+    for (const key of ["role", "persist", "dynamicDetail"] as const) {
       expect(cfg.limits[key]).not.toHaveProperty("min");
     }
   });
@@ -140,19 +135,14 @@ describe("write limits / stdin / validate", () => {
     expect(readMemoryBody(dir, "persist.md")).toBe(text);
   });
 
-  it("T-WL-12: validate/write behave consistently across four sections", async () => {
+  it("T-WL-12: validate/write behave consistently across memory sections", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    const text = "four-section-ok";
+    const text = "section-ok";
     const cases = [
       { cmd: ["role"] as const, section: "role" as const, read: () => readMemoryBody(dir, "role.md") },
       { cmd: ["persist"] as const, section: "persist" as const, read: () => readMemoryBody(dir, "persist.md") },
-      { cmd: ["dynamic"] as const, section: "dynamicDetail" as const, read: () => readMemoryBody(dir, "dynamic.md") },
-      {
-        cmd: ["kb", "dynamic"] as const,
-        section: "kbDynamicDetail" as const,
-        read: () => readKbDynamicBody(dir)
-      }
+      { cmd: ["dynamic"] as const, section: "dynamicDetail" as const, read: () => readMemoryBody(dir, "dynamic.md") }
     ] as const;
     for (const { cmd, section, read } of cases) {
       await runCli(["config", "set", "--section", section, "--max", "100"], dir);

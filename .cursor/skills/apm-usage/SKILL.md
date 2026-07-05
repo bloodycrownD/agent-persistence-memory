@@ -18,7 +18,7 @@ apm persist write --text "…"  # 可选：长期结论
 
 - 在**项目根目录**（将创建或使用 `.apm/`）执行。
 - 入口：`apm` 或 `npx apm`（本仓库需先 `npm run build`）。
-- **工作区自动补齐**：任意命令首次执行时会创建或补全 `.apm/` 目录树；`apm init` 等价且幂等。废弃的根级 `.apm/dynamic/` 若存在会被自动删除（任务 dynamic 在 `memory/dynamic.md`）。
+- **工作区自动补齐**：任意命令首次执行时会创建或补全 `.apm/` 目录树；`apm init` 等价且幂等。废弃的 `.apm/dynamic/` 与 `kb/dynamic/` 若存在会被自动删除（任务 dynamic 在 `memory/dynamic.md`）。
 
 ## 工作区
 
@@ -29,7 +29,6 @@ apm persist write --text "…"  # 可选：长期结论
   memory/persist.md    # 持久记忆
   memory/dynamic.md    # 动态记忆（当前任务）
   kb/docs/             # 知识库 .md（可嵌套）
-  kb/dynamic/detail.md
   kb/archive/          # memory 三段 write 时写入的分层快照（见下文）
   kb/index/search.json.gz
 ```
@@ -43,7 +42,6 @@ apm persist write --text "…"  # 可选：长期结论
 | 角色 | `role` | 100 |
 | 持久记忆 | `persist` | 800 |
 | 动态记忆 | `dynamicDetail` | 1500 |
-| KB 动态 | `kbDynamicDetail` | 1500 |
 
 - **无下限**：任意短文本（含 1 字、空串）均可写入。
 - **仅上限**：超过 `max` 时拒绝写入，报错含 `got n, max m, need k fewer chars`。
@@ -135,7 +133,6 @@ echo "草稿" | apm persist validate
 | `dynamic write --text ""` | 目标变为空模板，仍 +1 条空模板快照 |
 | `replace` | **不**新增快照 |
 | `validate` | **不**写盘、不归档 |
-| `kb dynamic write` | **不**写入 `archive/`（仅更新 `kb/dynamic/detail.md`） |
 
 旧版扁平 `archive/dynamic-<时间戳>.md` 若已存在，索引 rebuild 后仍可检索，与新分层路径共存。
 
@@ -147,7 +144,6 @@ apm kb write --path <path.md> --text "…"
 apm kb write --path <path.md> --stdin    # 或管道 stdin
 apm kb search --q "<查询>"
 apm kb index rebuild
-apm kb dynamic show|write|validate|replace
 ```
 
 | 操作 | 自动 `kb index rebuild` |
@@ -155,14 +151,14 @@ apm kb dynamic show|write|validate|replace
 | `role` / `persist` / `dynamic` 的 write、replace | 是 |
 | `dynamic write` | 是 |
 | `kb import` | 是 |
-| `kb write`、`kb dynamic` 的 write/replace | 否 |
+| `kb write` 的 write | 否 |
 | `validate`（各段） | 否 |
 
 ### 配置
 
 ```bash
 apm config show
-apm config set --section role|persist|dynamicDetail|kbDynamicDetail --max <n>
+apm config set --section role|persist|dynamicDetail --max <n>
 ```
 
 - 各段 limits **仅含 `max`**；旧 config 中的 `min` 读取时忽略。
@@ -204,6 +200,7 @@ apm dynamic write --text "草稿"
 |------|------|
 | `.apm/memory/` | CLI 外置记忆，`apm read` 使用 |
 | `.apm/dynamic/`（根下） | **已废弃**，勿手动创建；存在时会被 CLI 自动删除 |
+| `kb/dynamic/` | **已废弃**，存在时会被 CLI 自动删除 |
 | 仓库内其他 `memory/` | 不参与 `apm read`，不要当作 `.apm` 使用 |
 
 ## 故障排查

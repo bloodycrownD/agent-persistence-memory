@@ -20,7 +20,7 @@ describe("apm cli workspace layout", () => {
     expect(existsSync(join(dir, ".apm", "memory", "dynamic.md"))).toBe(true);
     expect(existsSync(join(dir, ".apm", "kb", "archive"))).toBe(true);
     expect(existsSync(join(dir, ".apm", "kb", "docs"))).toBe(true);
-    expect(existsSync(join(dir, ".apm", "kb", "dynamic", "detail.md"))).toBe(true);
+    expect(existsSync(join(dir, ".apm", "kb", "dynamic"))).toBe(false);
     expect(existsSync(join(dir, ".apm", "kb", "index"))).toBe(true);
     expect(existsSync(join(dir, ".apm", "kb", "index", "search.json.gz"))).toBe(false);
     expect(existsSync(join(dir, ".apm", "status.json"))).toBe(false);
@@ -50,9 +50,9 @@ describe("apm cli workspace layout", () => {
   it("T2c: incomplete workspace is auto-repaired on first command", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    rmSync(join(dir, ".apm", "kb", "dynamic", "detail.md"), { force: true });
+    rmSync(join(dir, ".apm", "memory", "persist.md"), { force: true });
     await runCli(["role", "show"], dir);
-    expect(existsSync(join(dir, ".apm", "kb", "dynamic", "detail.md"))).toBe(true);
+    expect(existsSync(join(dir, ".apm", "memory", "persist.md"))).toBe(true);
   });
 
   it("T3: dynamic uses flat show/write/replace (no detail subcommand)", async () => {
@@ -271,7 +271,7 @@ describe("apm cli workspace layout", () => {
     expect(shown.out).toContain(`1|${body}`);
   });
 
-  it("kb import copies md tree and supports kb dynamic section", async () => {
+  it("kb import copies md tree into kb/docs", async () => {
     const dir = newTempDir();
     const src = join(dir, "srcmd");
     mkdirSync(join(src, "sub"), { recursive: true });
@@ -283,10 +283,6 @@ describe("apm cli workspace layout", () => {
     expect(existsSync(join(dir, ".apm", "kb", "docs", "sub", "b.md"))).toBe(true);
     const out = await runCli(["kb", "search", "--q", "import_kw_xyz"], dir);
     expect(out.out).toContain("a.md");
-    await runCli(["config", "set", "--section", "kbDynamicDetail", "--max", "120"], dir);
-    await runCli(["kb", "dynamic", "write", "--text", "kbdyn-----"], dir);
-    const kd = await runCli(["kb", "dynamic", "show"], dir);
-    expect(kd.out).toContain("kbdyn");
   });
 
   it("rejects raw section files without mandatory front matter (memory role)", async () => {

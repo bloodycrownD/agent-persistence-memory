@@ -13,13 +13,13 @@ export function registerConfig(program: Command): void {
 
   config
     .command("set")
-    .requiredOption("--section <section>", "role|persist|dynamicDetail|kbDynamicDetail")
+    .requiredOption("--section <section>", "role|persist|dynamicDetail")
     .requiredOption("--max <max>", "记忆段长度上限")
     .action(async (opts: { section: Section; max: string }) => {
       const cwd = process.cwd();
       const cfg = readConfig(cwd);
       const sec = opts.section;
-      if (!["role", "persist", "dynamicDetail", "kbDynamicDetail"].includes(sec)) throw new Error(`Invalid section: ${sec}`);
+      if (!["role", "persist", "dynamicDetail"].includes(sec)) throw new Error(`Invalid section: ${sec}`);
       const max = Number(opts.max);
       const next = { ...cfg, limits: { ...cfg.limits, [sec]: { max } } };
       ConfigSchema.parse(next);

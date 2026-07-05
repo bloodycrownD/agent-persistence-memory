@@ -8,7 +8,7 @@ import { newTempDir, resolveCommand, runCli, runCliFail, runCliWithExit } from "
 describe("apm section replace", () => {
   it("T-REP-01: section help lists show/write/replace without edit", async () => {
     const program = buildProgram();
-    for (const path of [["role"], ["persist"], ["dynamic"], ["kb", "dynamic"]] as const) {
+    for (const path of [["role"], ["persist"], ["dynamic"]] as const) {
       const cmd = resolveCommand(program, ...path);
       expect(cmd).toBeDefined();
       const names = cmd!.commands.map((c) => c.name());
@@ -146,14 +146,13 @@ describe("apm section replace", () => {
     expect(out).toContain("2|b");
   });
 
-  it("T-REP-11: replace behaves consistently across all four sections", async () => {
+  it("T-REP-11: replace behaves consistently across memory sections", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     const cases = [
       { cmd: ["role"] as const, section: "role", path: join(dir, ".apm", "memory", "role.md") },
       { cmd: ["persist"] as const, section: "persist", path: join(dir, ".apm", "memory", "persist.md") },
-      { cmd: ["dynamic"] as const, section: "dynamicDetail", path: join(dir, ".apm", "memory", "dynamic.md") },
-      { cmd: ["kb", "dynamic"] as const, section: "kbDynamicDetail", path: join(dir, ".apm", "kb", "dynamic", "detail.md") }
+      { cmd: ["dynamic"] as const, section: "dynamicDetail", path: join(dir, ".apm", "memory", "dynamic.md") }
     ] as const;
     for (const { cmd, section, path } of cases) {
       await runCli(["config", "set", "--section", section, "--max", "100"], dir);

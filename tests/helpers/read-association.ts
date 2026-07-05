@@ -30,17 +30,8 @@ export function removeKbDocsReadme(dir: string): void {
   rmSync(join(dir, ".apm", "kb", "docs", "README.md"), { force: true });
 }
 
-export function neutralizeKbDynamicDetail(dir: string): void {
-  writeFileSync(
-    join(dir, ".apm", "kb", "dynamic", "detail.md"),
-    ['---', 'createdAt: "2020-01-01 00:00:00"', 'updatedAt: "2020-01-01 00:00:00"', "---", ""].join("\n"),
-    "utf8"
-  );
-}
-
 export function trimKbIndexFixtures(dir: string): void {
   removeKbDocsReadme(dir);
-  neutralizeKbDynamicDetail(dir);
 }
 
 /** 直接写入 memory 段正文（不经过 CLI write，不产生 archive 快照）。 */

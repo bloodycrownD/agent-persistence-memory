@@ -7,7 +7,6 @@ import { withGlobalLock } from "../../storage/fs-lock";
 import { serialWrite } from "../../storage/serial";
 import { importKbMarkdownFromDir } from "../../services/kb-import-service";
 import { rebuildKbIndex, searchKb } from "../../services/kb-index-service";
-import { registerSectionCommands } from "./section";
 
 export function registerKb(program: Command): void {
   const kb = program.command("kb");
@@ -57,7 +56,4 @@ export function registerKb(program: Command): void {
     await rebuildKbIndex(process.cwd());
     console.log("OK");
   });
-
-  const kbDynamic = kb.command("dynamic");
-  registerSectionCommands(kbDynamic, "kbDynamicDetail");
 }
