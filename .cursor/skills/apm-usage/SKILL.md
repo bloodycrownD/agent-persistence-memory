@@ -1,6 +1,6 @@
 ---
 name: apm-usage
-description: 指导 Agent 与开发者使用本仓库 APM CLI（init、read、role/persist/dynamic、kb 导入/索引/联想区、replace 局部更新、validate 干跑、stdin 管道写入）。在用户提到 apm、外置记忆、.apm、apm read、知识库、会话恢复或 Agent 初始化上下文时使用。
+description: 指导 Agent 与开发者使用本仓库 APM CLI（init、read、role/persist/dynamic、kb 检索/索引、联想区、replace 局部更新、validate 干跑、stdin 管道写入）。在用户提到 apm、外置记忆、.apm、apm read、知识库、会话恢复或 Agent 初始化上下文时使用。
 disable-model-invocation: true
 ---
 
@@ -33,7 +33,7 @@ apm persist write --text "…"  # 可选：长期结论
   kb/index/search.json.gz
 ```
 
-`apm kb write --path` 的路径相对 `kb/docs/`（如 `Iterations/foo/prd.md`）。检索与联想中的路径相对 `kb/`（如 `docs/foo.md`、`archive/2026/06/18/dynamic/143052127.md`；旧版扁平 `archive/dynamic-....md` 仍可被索引）。
+知识库文档请直接写入 `kb/docs/`（如 `Iterations/foo/prd.md`），再执行 `apm kb index rebuild`。检索与联想中的路径相对 `kb/`（如 `docs/foo.md`、`archive/2026/06/18/dynamic/143052127.md`；旧版扁平 `archive/dynamic-....md` 仍可被索引）。
 
 ## 默认长度上限（仅 max，无下限）
 
@@ -45,7 +45,7 @@ apm persist write --text "…"  # 可选：长期结论
 
 - **无下限**：任意短文本（含 1 字、空串）均可写入。
 - **仅上限**：超过 `max` 时拒绝写入，报错含 `got n, max m, need k fewer chars`。
-- `kb write` **不受**上述 max 限制。
+- `kb/docs/` 下的知识库文件**不受**上述 max 限制（直接写文件，不经 CLI write）。
 
 ## `apm read` 输出
 
@@ -87,17 +87,11 @@ apm dynamic replace --old "…" --new "…"
 # bash：管道写入
 echo -e "任务：…\n下一步：…" | apm dynamic write
 
-# bash：重定向文件
-apm kb write --path Iterations/foo/prd.md --stdin < prd.md
-
 # PowerShell：管道写入
 "任务：…`n下一步：…" | apm dynamic write
-
-# PowerShell：重定向文件
-Get-Content .\prd.md -Raw | apm kb write --path Iterations/foo/prd.md --stdin
 ```
 
-**无 `--file` 参数**：长文档请先写入 `kb/docs/` 路径（Shell 重定向 stdin），或使用 Agent 写文件工具后执行 `apm kb index rebuild`。
+**无 `--file` 参数**：长知识库文档请直接写入 `.apm/kb/docs/`，再执行 `apm kb index rebuild`。
 
 #### `validate`（干跑，不落盘）
 
@@ -115,7 +109,7 @@ echo "草稿" | apm persist validate
 - `replace` **不**写入 archive 快照（仅 `write` 触发快照）。
 - 全量覆盖用 `write`。
 - 写入时不要手写 YAML front matter。
-- `--old` / `--new` 支持转义（`kb write` 的 `--text` / stdin 同理）。
+- `--old` / `--new` 支持转义（`\n` `\t` 等）。
 
 ### memory 三段 write 与 archive 快照
 
@@ -139,19 +133,16 @@ echo "草稿" | apm persist validate
 ### 知识库
 
 ```bash
-apm kb import --from <目录>
-apm kb write --path <path.md> --text "…"
-apm kb write --path <path.md> --stdin    # 或管道 stdin
 apm kb search --q "<查询>"
 apm kb index rebuild
 ```
 
+知识库正文不经 CLI 写入：直接复制/移动/编辑 `.apm/kb/docs/**/*.md` 后执行 `apm kb index rebuild`。
+
 | 操作 | 自动 `kb index rebuild` |
 |------|-------------------------|
 | `role` / `persist` / `dynamic` 的 write、replace | 是 |
-| `dynamic write` | 是 |
-| `kb import` | 是 |
-| `kb write` 的 write | 否 |
+| 直接写入/移动 `kb/docs/` | 否（需手动 `rebuild`） |
 | `validate`（各段） | 否 |
 
 ### 配置
@@ -175,11 +166,10 @@ apm dynamic write --text "任务：…\n下一步：…"
 # 或管道 / --stdin（见上文）
 ```
 
-**写入知识库单文件：**
+**写入知识库：**
 
 ```bash
-apm kb write --path Iterations/<名>/prd.md --text "…"
-# 或：apm kb write --path … --stdin < prd.md
+# 直接复制/移动到 .apm/kb/docs/ 后：
 apm kb index rebuild
 apm read
 ```
@@ -191,8 +181,6 @@ apm dynamic validate --text "草稿"
 # 通过后再 write
 apm dynamic write --text "草稿"
 ```
-
-**批量导入：** `apm kb import --from docs`（导入后自动 rebuild）。
 
 ## 勿混淆的路径
 
@@ -209,7 +197,7 @@ apm dynamic write --text "草稿"
 |------|------|
 | `Knowledge index missing` | `apm kb index rebuild` |
 | 联想区无结果 | 记忆与 kb 有共同词；`rebuild` |
-| `kb write` 后搜不到 | `apm kb index rebuild` |
+| 知识库改完搜不到 | `apm kb index rebuild` |
 | 长度报错 `got … max … need … fewer` | 缩短正文，或 `config set --max` 调大；可先 `validate` 干跑 |
 | `\n` 未换行 | 使用 `\n` 转义序列、管道真实换行，或 `--stdin` |
 | `Cannot use both --text and --stdin` | 只选其一 |

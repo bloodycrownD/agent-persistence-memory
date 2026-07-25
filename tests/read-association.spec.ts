@@ -6,6 +6,7 @@ import {
   truncateAssocDisplayLine
 } from "../src/services/read-association-service";
 import { newTempDir, runCli } from "./helpers/cli-harness";
+import { writeKbDoc } from "./helpers/kb-docs";
 import {
   assocEntryBlocks,
   assocPercentHeaders,
@@ -24,10 +25,7 @@ describe("apm read association area", () => {
     await runCli(["role", "write", "--text", kw], dir);
     await runCli(["persist", "write", "--text", `${kw} persist note`], dir);
     await runCli(["dynamic", "write", "--text", `${kw} dynamic note`], dir);
-    await runCli(
-      ["kb", "write", "--path", "assoc-topic.md", "--text", `# Assoc\n\n${kw} in knowledge base.\n`],
-      dir
-    );
+    writeKbDoc(dir, "assoc-topic.md", `# Assoc\n\n${kw} in knowledge base.\n`);
     await runCli(["kb", "index", "rebuild"], dir);
     const { out } = await runCli(["read"], dir);
     const roleIdx = out.indexOf("# 角色");
@@ -47,10 +45,7 @@ describe("apm read association area", () => {
     const kw = "zzassoc_many_shared";
     await runCli(["role", "write", "--text", kw], dir);
     for (let i = 0; i < 8; i++) {
-      await runCli(
-        ["kb", "write", "--path", `a${i}.md`, "--text", `# Doc ${i}\n\n${kw} token ${i}.\n`],
-        dir
-      );
+      writeKbDoc(dir, `a${i}.md`, `# Doc ${i}\n\n${kw} token ${i}.\n`);
     }
     trimKbIndexFixtures(dir);
     await runCli(["kb", "index", "rebuild"], dir);
@@ -69,8 +64,8 @@ describe("apm read association area", () => {
     await setupAssocWorkspace(dir);
     const kw = "zzassoc_two_only";
     seedMemorySection(dir, "role", kw);
-    await runCli(["kb", "write", "--path", "t0.md", "--text", `# T0\n${kw}\n`], dir);
-    await runCli(["kb", "write", "--path", "t1.md", "--text", `# T1\n${kw}\n`], dir);
+    writeKbDoc(dir, "t0.md", `# T0\n${kw}\n`);
+    writeKbDoc(dir, "t1.md", `# T1\n${kw}\n`);
     await runCli(["kb", "index", "rebuild"], dir);
     const { out } = await runCli(["read"], dir);
     expect(assocPercentHeaders(out).length).toBe(2);
@@ -82,10 +77,7 @@ describe("apm read association area", () => {
     const kw = "zzassoc_cap20_shared";
     await runCli(["role", "write", "--text", kw], dir);
     for (let i = 0; i < 22; i++) {
-      await runCli(
-        ["kb", "write", "--path", `cap${i}.md`, "--text", `# Cap ${i}\n\n${kw} item ${i}.\n`],
-        dir
-      );
+      writeKbDoc(dir, `cap${i}.md`, `# Cap ${i}\n\n${kw} item ${i}.\n`);
     }
     trimKbIndexFixtures(dir);
     await runCli(["kb", "index", "rebuild"], dir);
@@ -102,17 +94,7 @@ describe("apm read association area", () => {
     const kw = "zzassoc_summary_nolines";
     await runCli(["role", "write", "--text", kw], dir);
     for (let i = 0; i < 30; i++) {
-      await runCli(
-        [
-          "kb",
-          "write",
-          "--path",
-          `sum${i}.md`,
-          "--text",
-          `# Sum ${i}\n\n${kw} line-one-${i}\n${kw} line-two-${i}\n${kw} line-three-${i}\n`
-        ],
-        dir
-      );
+      writeKbDoc(dir, `sum${i}.md`, `# Sum ${i}\n\n${kw} line-one-${i}\n${kw} line-two-${i}\n${kw} line-three-${i}\n`);
     }
     trimKbIndexFixtures(dir);
     await runCli(["kb", "index", "rebuild"], dir);
@@ -133,7 +115,7 @@ describe("apm read association area", () => {
     const kw = "zzassoc_archive_only";
     await runCli(["role", "write", "--text", kw], dir);
     writeKbArchiveDoc(dir, "only-here.md", `# Archive only\n\n${kw} lives in archive.\n`);
-    await runCli(["kb", "write", "--path", "other.md", "--text", "# Other\n\nunrelated content.\n"], dir);
+    writeKbDoc(dir, "other.md", "# Other\n\nunrelated content.\n");
     await runCli(["kb", "index", "rebuild"], dir);
     const { out } = await runCli(["read"], dir);
     expect(out).toContain("archive/only-here.md");
@@ -145,8 +127,8 @@ describe("apm read association area", () => {
     const kwA = "zzassoc_only_alpha_token";
     const kwB = "zzassoc_only_bravo_token";
     await runCli(["dynamic", "write", "--text", kwA], dir);
-    await runCli(["kb", "write", "--path", "hit-a.md", "--text", `# A\n\n${kwA} only here.\n`], dir);
-    await runCli(["kb", "write", "--path", "hit-b.md", "--text", `# B\n\n${kwB} only here.\n`], dir);
+    writeKbDoc(dir, "hit-a.md", `# A\n\n${kwA} only here.\n`);
+    writeKbDoc(dir, "hit-b.md", `# B\n\n${kwB} only here.\n`);
     await runCli(["kb", "index", "rebuild"], dir);
     const first = await runCli(["read"], dir);
     expect(first.out).toContain("docs/hit-a.md");
@@ -167,8 +149,8 @@ describe("apm read association area", () => {
     await setupAssocWorkspace(dir);
     const kw = "zzassoc_percent_range";
     await runCli(["role", "write", "--text", kw], dir);
-    await runCli(["kb", "write", "--path", "p0.md", "--text", `# P0\n${kw}\n`], dir);
-    await runCli(["kb", "write", "--path", "p1.md", "--text", `# P1\n${kw} extra\n`], dir);
+    writeKbDoc(dir, "p0.md", `# P0\n${kw}\n`);
+    writeKbDoc(dir, "p1.md", `# P1\n${kw} extra\n`);
     await runCli(["kb", "index", "rebuild"], dir);
     const { out } = await runCli(["read"], dir);
     const percents = assocPercentValues(out);
@@ -184,7 +166,7 @@ describe("apm read association area", () => {
     const dir = newTempDir();
     await setupAssocWorkspace(dir);
     await runCli(["role", "write", "--text", "the a uniquekw"], dir);
-    await runCli(["kb", "write", "--path", "stop.md", "--text", "# Stop\n\nuniquekw appears here.\n"], dir);
+    writeKbDoc(dir, "stop.md", "# Stop\n\nuniquekw appears here.\n");
     await runCli(["kb", "index", "rebuild"], dir);
     const { out } = await runCli(["read"], dir);
     const firstHeader = assocPercentHeaders(out)[0] ?? "";
@@ -200,17 +182,7 @@ describe("apm read association area", () => {
       ["role", "write", "--text", "的一个多个得之类 zzassoc_kw_cap_test 都是项目结构"],
       dir
     );
-    await runCli(
-      [
-        "kb",
-        "write",
-        "--path",
-        "zh-stop.md",
-        "--text",
-        "# ZH\n\nzzassoc_kw_cap_test 项目结构 apm read 联想区.\n"
-      ],
-      dir
-    );
+    writeKbDoc(dir, "zh-stop.md", "# ZH\n\nzzassoc_kw_cap_test 项目结构 apm read 联想区.\n");
     await runCli(["kb", "index", "rebuild"], dir);
     const { out } = await runCli(["read"], dir);
     const firstHeader = assocPercentHeaders(out)[0] ?? "";
@@ -230,7 +202,7 @@ describe("apm read association area", () => {
     const dir = newTempDir();
     await setupAssocWorkspace(dir);
     await runCli(["role", "write", "--text", "zzassoc_missing_idx"], dir);
-    await runCli(["kb", "write", "--path", "x.md", "--text", "# X\nzzassoc_missing_idx\n"], dir);
+    writeKbDoc(dir, "x.md", "# X\nzzassoc_missing_idx\n");
     await runCli(["kb", "index", "rebuild"], dir);
     rmSync(join(dir, ".apm", "kb", "index", "search.json.gz"), { force: true });
     const { out } = await runCli(["read"], dir);
@@ -243,7 +215,7 @@ describe("apm read association area", () => {
     const dir = newTempDir();
     await setupAssocWorkspace(dir);
     seedMemorySection(dir, "role", "zzassoc_no_overlap_ctx");
-    await runCli(["kb", "write", "--path", "unrelated.md", "--text", "# U\n\nzzassoc_kb_other_token\n"], dir);
+    writeKbDoc(dir, "unrelated.md", "# U\n\nzzassoc_kb_other_token\n");
     await runCli(["kb", "index", "rebuild"], dir);
     const { out } = await runCli(["read"], dir);
     expect(out).not.toContain("# 联想区");
@@ -254,17 +226,7 @@ describe("apm read association area", () => {
     await setupAssocWorkspace(dir);
     const kw = "zzassoc_multiline_kw";
     await runCli(["role", "write", "--text", kw], dir);
-    await runCli(
-      [
-        "kb",
-        "write",
-        "--path",
-        "multiline.md",
-        "--text",
-        `# Multi\n\nline1 ${kw}\nline2 ${kw}\nline3 ${kw}\nline4 ${kw}\nline5 ${kw}\n`
-      ],
-      dir
-    );
+    writeKbDoc(dir, "multiline.md", `# Multi\n\nline1 ${kw}\nline2 ${kw}\nline3 ${kw}\nline4 ${kw}\nline5 ${kw}\n`);
     trimKbIndexFixtures(dir);
     await runCli(["kb", "index", "rebuild"], dir);
     const { out } = await runCli(["read"], dir);
@@ -285,10 +247,7 @@ describe("apm read association area", () => {
     const kw = "zzassoc_compact_summary";
     await runCli(["role", "write", "--text", kw], dir);
     for (let i = 0; i < 12; i++) {
-      await runCli(
-        ["kb", "write", "--path", `compact${i}.md`, "--text", `# C${i}\n\n${kw} item ${i}.\n`],
-        dir
-      );
+      writeKbDoc(dir, `compact${i}.md`, `# C${i}\n\n${kw} item ${i}.\n`);
     }
     trimKbIndexFixtures(dir);
     await runCli(["kb", "index", "rebuild"], dir);
@@ -313,7 +272,7 @@ describe("apm read association area", () => {
     await setupAssocWorkspace(dir);
     const kw = "zzassoc_kw_label";
     await runCli(["role", "write", "--text", kw], dir);
-    await runCli(["kb", "write", "--path", "label.md", "--text", `# Label\n\n${kw} here.\n`], dir);
+    writeKbDoc(dir, "label.md", `# Label\n\n${kw} here.\n`);
     await runCli(["kb", "index", "rebuild"], dir);
     const { out } = await runCli(["read"], dir);
     const headers = assocPercentHeaders(out);
@@ -333,17 +292,7 @@ describe("apm read association area", () => {
     const kw = "zzassoc_long_line_kw";
     const longBody = "x".repeat(130);
     seedMemorySection(dir, "role", kw);
-    await runCli(
-      [
-        "kb",
-        "write",
-        "--path",
-        "longline.md",
-        "--text",
-        `# Long\n\n${kw} ${longBody}\n`
-      ],
-      dir
-    );
+    writeKbDoc(dir, "longline.md", `# Long\n\n${kw} ${longBody}\n`);
     trimKbIndexFixtures(dir);
     await runCli(["kb", "index", "rebuild"], dir);
     const { out } = await runCli(["read"], dir);
@@ -359,10 +308,7 @@ describe("apm read association area", () => {
     await setupAssocWorkspace(dir);
     const kw = "zzassoc_short_line_kw";
     await runCli(["role", "write", "--text", kw], dir);
-    await runCli(
-      ["kb", "write", "--path", "shortline.md", "--text", `# Short\n\nshort ${kw} body.\n`],
-      dir
-    );
+    writeKbDoc(dir, "shortline.md", `# Short\n\nshort ${kw} body.\n`);
     trimKbIndexFixtures(dir);
     await runCli(["kb", "index", "rebuild"], dir);
     const { out } = await runCli(["read"], dir);

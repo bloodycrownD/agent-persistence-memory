@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildProgram } from "../src/index";
 import { newTempDir, runCli, runCliFail, runCliWithExit } from "./helpers/cli-harness";
+import { writeKbDoc } from "./helpers/kb-docs";
 import {
   countLayeredSnapshots,
   latestLayeredSnapshotAbs,
@@ -145,18 +146,10 @@ describe("apm cli workspace layout", () => {
     expect(shown.out).toContain("2|line2");
   });
 
-  it("T-KB-ESC-01: kb write unescapes \\n in --text", async () => {
-    const dir = newTempDir();
-    await runCli(["init"], dir);
-    await runCli(["kb", "write", "--path", "esc-test.md", "--text", "h1\\nh2"], dir);
-    const content = readFileSync(join(dir, ".apm", "kb", "docs", "esc-test.md"), "utf8");
-    expect(content).toContain("h1\nh2");
-  });
-
   it("T-IDX-01: role write updates search.json.gz mtime or hash", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["kb", "write", "--path", "seed.md", "--text", "# Seed\nseed for index baseline\n"], dir);
+    writeKbDoc(dir, "seed.md", "# Seed\nseed for index baseline\n");
     await runCli(["kb", "index", "rebuild"], dir);
     await runCli(["config", "set", "--section", "role", "--max", "100"], dir);
     const idx = join(dir, ".apm", "kb", "index", "search.json.gz");
@@ -187,21 +180,11 @@ describe("apm cli workspace layout", () => {
     expect(hit).toBeTruthy();
   });
 
-  it("T6: kb write, index rebuild, search finds expected doc in top results", async () => {
+  it("T6: kb docs + index rebuild, search finds expected doc in top results", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(
-      [
-        "kb",
-        "write",
-        "--path",
-        "alpha-topic.md",
-        "--text",
-        "# Alpha\n\nkwfixture_alpha_unique token for search.\n"
-      ],
-      dir
-    );
-    await runCli(["kb", "write", "--path", "nested/beta.md", "--text", "# Beta\n\nother content only.\n"], dir);
+    writeKbDoc(dir, "alpha-topic.md", "# Alpha\n\nkwfixture_alpha_unique token for search.\n");
+    writeKbDoc(dir, "nested/beta.md", "# Beta\n\nother content only.\n");
     await runCli(["kb", "index", "rebuild"], dir);
     const out = await runCli(["kb", "search", "--q", "kwfixture_alpha_unique"], dir);
     expect(out.out).toContain("docs/alpha-topic.md");
@@ -210,7 +193,7 @@ describe("apm cli workspace layout", () => {
   it("T7: index file is gzip; missing index yields rebuild hint", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["kb", "write", "--path", "x.md", "--text", "# T\nhello world\n"], dir);
+    writeKbDoc(dir, "x.md", "# T\nhello world\n");
     await runCli(["kb", "index", "rebuild"], dir);
     const idx = join(dir, ".apm", "kb", "index", "search.json.gz");
     const head = readFileSync(idx).subarray(0, 2);
@@ -308,16 +291,12 @@ describe("apm cli workspace layout", () => {
     expect(shown.out).toContain(`1|${body}`);
   });
 
-  it("kb import copies md tree into kb/docs", async () => {
+  it("direct kb/docs files are searchable after index rebuild", async () => {
     const dir = newTempDir();
-    const src = join(dir, "srcmd");
-    mkdirSync(join(src, "sub"), { recursive: true });
-    writeFileSync(join(src, "a.md"), "# Imp\nimport_kw_xyz\n", "utf8");
-    writeFileSync(join(src, "sub", "b.md"), "body\n", "utf8");
     await runCli(["init"], dir);
-    await runCli(["kb", "import", "--from", src], dir);
-    expect(existsSync(join(dir, ".apm", "kb", "docs", "a.md"))).toBe(true);
-    expect(existsSync(join(dir, ".apm", "kb", "docs", "sub", "b.md"))).toBe(true);
+    writeKbDoc(dir, "a.md", "# Imp\nimport_kw_xyz\n");
+    writeKbDoc(dir, "sub/b.md", "body\n");
+    await runCli(["kb", "index", "rebuild"], dir);
     const out = await runCli(["kb", "search", "--q", "import_kw_xyz"], dir);
     expect(out.out).toContain("a.md");
   });

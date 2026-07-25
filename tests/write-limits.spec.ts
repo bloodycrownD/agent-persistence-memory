@@ -154,16 +154,6 @@ describe("write limits / stdin / validate", () => {
     }
   });
 
-  it("T-WL-13: kb write via stdin has no max limit", async () => {
-    const dir = newTempDir();
-    await runCli(["init"], dir);
-    const body = "k".repeat(2500);
-    await runCliWithStdin(["kb", "write", "--path", "long.md", "--stdin"], dir, body);
-    const written = readFileSync(join(dir, ".apm", "kb", "docs", "long.md"), "utf8");
-    expect(written).toBe(body);
-    expect(written.length).toBe(2500);
-  });
-
   it("T-WL-14: legacy config with min still allows short write", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
