@@ -56,7 +56,7 @@ describe("apm cli workspace layout", () => {
     expect(existsSync(join(dir, ".apm", "memory", "persist.md"))).toBe(true);
   });
 
-  it("T3: dynamic uses flat show/write/replace (no detail subcommand)", async () => {
+  it("T3: dynamic uses flat show/write/validate (no detail subcommand)", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     await runCli(["config", "set", "--section", "dynamicDetail", "--max", "80"], dir);
@@ -64,12 +64,16 @@ describe("apm cli workspace layout", () => {
     await runCli(["dynamic", "write", "--text", body], dir);
     const shown = await runCli(["dynamic", "show"], dir);
     expect(shown.out).toContain(`1|${body}`);
-    await runCli(["dynamic", "replace", "--old", "x", "--new", "y", "--all"], dir);
+    await runCli(["dynamic", "write", "--text", "y".repeat(10)], dir);
     const after = await runCli(["dynamic", "show"], dir);
     expect(after.out).toContain(`1|${"y".repeat(10)}`);
     const program = buildProgram();
     const dyn = program.commands.find((c) => c.name() === "dynamic");
     expect(dyn?.commands.find((c) => c.name() === "detail")).toBeUndefined();
+    expect(dyn?.commands.map((c) => c.name())).toEqual(
+      expect.arrayContaining(["show", "write", "validate"])
+    );
+    expect(dyn?.commands.find((c) => c.name() === "replace")).toBeUndefined();
   });
 
   it("T4: dynamic write 每次写入新版分层 archive 快照", async () => {
@@ -271,7 +275,7 @@ describe("apm cli workspace layout", () => {
     expect(showErr).toContain("createdAt");
   });
 
-  it("registers init and kb", () => {
+  it("registers init and kb; kb only search/index", () => {
     const program = buildProgram();
     const names = program.commands.map((c) => c.name());
     expect(names).toContain("init");
@@ -279,6 +283,56 @@ describe("apm cli workspace layout", () => {
     expect(names).toContain("dynamic");
     expect(names).not.toContain("tmp");
     expect(names).not.toContain("chunks");
+    const kb = program.commands.find((c) => c.name() === "kb");
+    expect(kb).toBeDefined();
+    const kbNames = kb!.commands.map((c) => c.name()).sort();
+    expect(kbNames).toEqual(["index", "search"]);
+    expect(kbNames).not.toContain("write");
+    expect(kbNames).not.toContain("import");
+  });
+
+  it("T-KB-NEG-01: kb write / import 退出码非 0", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    const writeRes = await runCliWithExit(["kb", "write", "--path", "x.md", "--text", "hi"], dir);
+    expect(writeRes.code).not.toBe(0);
+    const importRes = await runCliWithExit(["kb", "import", "--from", "somewhere"], dir);
+    expect(importRes.code).not.toBe(0);
+  });
+
+  it("T-WRITE-HEAL-01: 无 FM 的 role write 自愈后 show 成功", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    await runCli(["config", "set", "--section", "role", "--max", "100"], dir);
+    const rolePath = join(dir, ".apm", "memory", "role.md");
+    writeFileSync(rolePath, "plain body without front matter", "utf8");
+    const showBefore = await runCliFail(["role", "show"], dir);
+    expect(showBefore).toContain("Invalid section front matter");
+    await runCli(["role", "write", "--text", "healed body"], dir);
+    const shown = await runCli(["role", "show"], dir);
+    expect(shown.out).toContain("1|healed body");
+    const raw = readFileSync(rolePath, "utf8");
+    expect(raw.startsWith("---\n")).toBe(true);
+    expect(raw).toMatch(/createdAt: ['"]\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}['"]/);
+    expect(raw).toMatch(/updatedAt: ['"]\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}['"]/);
+  });
+
+  it("T-WRITE-HEAL-02: 坏 meta 的 role write 自愈后 show 成功", async () => {
+    const dir = newTempDir();
+    await runCli(["init"], dir);
+    await runCli(["config", "set", "--section", "role", "--max", "100"], dir);
+    const rolePath = join(dir, ".apm", "memory", "role.md");
+    writeFileSync(
+      rolePath,
+      ['---', 'createdAt: "bad-time"', 'updatedAt: "2026-01-01 10:00:00"', "---", "old body"].join("\n"),
+      "utf8"
+    );
+    await runCli(["role", "write", "--text", "healed after bad meta"], dir);
+    const shown = await runCli(["role", "show"], dir);
+    expect(shown.out).toContain("1|healed after bad meta");
+    const raw = readFileSync(rolePath, "utf8");
+    expect(raw).toMatch(/createdAt: ['"]\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}['"]/);
+    expect(raw).not.toContain("bad-time");
   });
 
   it("enforces dynamicDetail limits after flat write", async () => {

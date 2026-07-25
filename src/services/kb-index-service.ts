@@ -2,8 +2,8 @@ import { existsSync, readFileSync, renameSync, writeFileSync, readdirSync } from
 import { join } from "node:path";
 import { gzipSync, gunzipSync } from "node:zlib";
 import MiniSearch from "minisearch";
+import { extractMarkdownBodyRelaxed } from "../core/markdown-body";
 import { apmPaths, ensureWorkspace } from "../storage/paths";
-import { parseFrontMatter } from "../storage/markdown";
 import { withGlobalLock } from "../storage/fs-lock";
 import { serialWrite } from "../storage/serial";
 
@@ -59,14 +59,7 @@ function kbMiniSearchOptions(): ConstructorParameters<typeof MiniSearch<KbIndexD
 }
 
 function extractKbDoc(raw: string): { body: string; title: string } {
-  let body = raw.replace(/\r\n/g, "\n");
-  if (body.startsWith("---\n")) {
-    try {
-      body = parseFrontMatter(body).content;
-    } catch {
-      /* keep full */
-    }
-  }
+  const body = extractMarkdownBodyRelaxed(raw);
   const hm = body.match(/^#\s*(.+)$/m);
   const title = hm ? hm[1].trim() : "";
   return { body, title };

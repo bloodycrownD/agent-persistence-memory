@@ -1,4 +1,4 @@
-import { rmSync } from "node:fs";
+import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -318,6 +318,38 @@ describe("apm read association area", () => {
     for (const line of detailLines) {
       expect(line.endsWith("...")).toBe(false);
     }
+  });
+
+  it("T-READ-ASSOC-FM-01: 无 FM 的 role 仍可命中联想区", async () => {
+    const dir = newTempDir();
+    await setupAssocWorkspace(dir);
+    const kw = "zzassoc_nofm_unique_kw";
+    writeFileSync(join(dir, ".apm", "memory", "role.md"), kw, "utf8");
+    writeKbDoc(dir, "nofm-hit.md", `# NoFM\n\n${kw} in knowledge base.\n`);
+    trimKbIndexFixtures(dir);
+    await runCli(["kb", "index", "rebuild"], dir);
+    const { out } = await runCli(["read"], dir);
+    expect(out).toContain("# 联想区");
+    expect(out).toContain("docs/nofm-hit.md");
+    expect(assocPercentHeaders(out).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("T-READ-ASSOC-FM-02: 坏 meta 的 role 仍可命中联想区", async () => {
+    const dir = newTempDir();
+    await setupAssocWorkspace(dir);
+    const kw = "zzassoc_badmeta_unique_kw";
+    writeFileSync(
+      join(dir, ".apm", "memory", "role.md"),
+      ['---', 'createdAt: "bad-time"', 'updatedAt: "2026-01-01 10:00:00"', "---", kw].join("\n"),
+      "utf8"
+    );
+    writeKbDoc(dir, "badmeta-hit.md", `# BadMeta\n\n${kw} in knowledge base.\n`);
+    trimKbIndexFixtures(dir);
+    await runCli(["kb", "index", "rebuild"], dir);
+    const { out } = await runCli(["read"], dir);
+    expect(out).toContain("# 联想区");
+    expect(out).toContain("docs/badmeta-hit.md");
+    expect(assocPercentHeaders(out).length).toBeGreaterThanOrEqual(1);
   });
 });
 

@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { nowLocal } from "./time";
 import { ConfigSchema, DEFAULT_CONFIG } from "../schemas/config";
-
-const LOCAL_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+import { LOCAL_TIMESTAMP_RE } from "../schemas/local-timestamp";
 
 function pickTimestamp(value: unknown, fallback: string): string {
   return typeof value === "string" && LOCAL_TIMESTAMP_RE.test(value) ? value : fallback;

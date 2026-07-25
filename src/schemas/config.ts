@@ -1,6 +1,5 @@
 import { z } from "zod";
-
-const LOCAL_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+import { LOCAL_TIMESTAMP_RE } from "./local-timestamp";
 
 export const DEFAULT_CONFIG = {
   limits: {
