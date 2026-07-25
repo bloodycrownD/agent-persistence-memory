@@ -32,7 +32,7 @@ function isDir(path: string): boolean {
   return existsSync(path) && statSync(path).isDirectory();
 }
 
-/** True if `.apm` uses an unsupported pre-migration layout (no auto-migration). */
+/** 若 `.apm` 为不支持自动迁移的旧布局则返回 true。 */
 export function isLegacyApmLayout(cwd: string): boolean {
   const root = join(cwd, ".apm");
   if (!existsSync(root)) return false;
@@ -51,7 +51,7 @@ export function assertNotLegacyApmLayout(cwd: string): void {
   );
 }
 
-/** Remove deprecated dynamic paths; task dynamic lives in `memory/dynamic.md`. */
+/** 删除已废弃的 dynamic 路径；任务动态记忆位于 `memory/dynamic.md`。 */
 function removeDeprecatedDynamicPaths(cwd: string): void {
   const root = join(cwd, ".apm");
   for (const rel of ["dynamic", join("kb", "dynamic")]) {
@@ -74,7 +74,7 @@ export function isWorkspaceComplete(cwd: string): boolean {
   );
 }
 
-/** Idempotent workspace tree + default section files and kb/docs placeholder. */
+/** 幂等创建工作区目录树、默认记忆段文件与 kb/docs 占位。 */
 export function createWorkspaceIdempotent(cwd: string): void {
   removeDeprecatedDynamicPaths(cwd);
   const p = apmPaths(cwd);
@@ -112,8 +112,7 @@ export function createWorkspaceIdempotent(cwd: string): void {
 }
 
 /**
- * `apm init`: refuse legacy trees, then create or repair the workspace layout
- * without overwriting existing section bodies.
+ * `apm init`：拒绝旧布局后创建或修复工作区目录树，不覆盖已有记忆段正文。
  */
 export function initApmWorkspace(cwd: string): void {
   assertNotLegacyApmLayout(cwd);
@@ -121,8 +120,7 @@ export function initApmWorkspace(cwd: string): void {
 }
 
 /**
- * Prepare `.apm` for normal commands: reject legacy layout; create or repair
- * the full workspace tree when `.apm` is missing or incomplete.
+ * 为普通命令准备 `.apm`：拒绝旧布局；缺失或不完整时创建或修复完整工作区树。
  */
 export function ensureWorkspace(cwd: string): void {
   assertNotLegacyApmLayout(cwd);

@@ -13,10 +13,10 @@ import {
 
 const QUERY_SECTIONS: Section[] = ["role", "persist", "dynamicDetail"];
 
-/** Max keywords on each association header line (PRD UX: 3–4). */
+/** 联想区每条标题行最多展示的关键词数（PRD UX：3–4）。 */
 const MAX_ASSOC_KEYWORDS = 4;
 
-/** Max display length for a detail line (`lineNo|text`); overflow gets `...`. */
+/** 详情行（`lineNo|text`）最大展示长度；超出追加 `...`。 */
 export const MAX_ASSOC_DETAIL_LINE_LEN = 120;
 
 export type ReadAssociationLine = { lineNo: number; text: string };
@@ -56,8 +56,8 @@ export function buildReadQueryContext(cwd: string): string {
 }
 
 /**
- * Prefer longer informative tokens when trimming to the display cap.
- * Query-order is preserved among kept terms.
+ * 截断至展示上限时优先保留更长、更有信息量的 token；
+ * 保留项仍按查询词序排列。
  */
 function keywordInformativeness(term: string): number {
   if (/^[a-z0-9_]{2,}$/i.test(term)) return term.length;
@@ -75,7 +75,7 @@ function capKeywords(keywords: string[]): string[] {
   return keywords.filter((_, i) => keep.has(i));
 }
 
-/** Query ∩ hit terms (query order), capped; fallback to top hit terms after noise filter. */
+/** 查询词 ∩ 命中词（按查询序）并封顶；无交集时回退噪声过滤后的命中词。 */
 function pickKeywords(queryContext: string, hit: KbSearchHitEx): string[] {
   const queryTerms = kbTokenize(queryContext).filter((t) => !isKbNoiseToken(t));
   const hitTerms = new Set([...hit.terms, ...Object.keys(hit.match ?? {})]);
@@ -109,8 +109,8 @@ function lineContainsKeyword(line: string, keywords: string[]): boolean {
 }
 
 /**
- * Up to `maxLines` non-empty source lines (1-based) that contain any keyword.
- * Uses raw file bytes, not stripped index body.
+ * 最多取 `maxLines` 条含任一关键词的非空源文件行（行号从 1 起）。
+ * 使用原始文件内容，而非索引剥离后的正文。
  */
 export function collectHitLines(
   kbRoot: string,
@@ -134,7 +134,7 @@ export function collectHitLines(
 }
 
 /**
- * Run kb search against merged memory context; split detailed (5) and summary (10) tiers.
+ * 以合并后的记忆上下文检索 kb；拆分为详细层（5）与摘要层（10）。
  */
 export function computeReadAssociation(cwd: string): ReadAssociationResult {
   ensureWorkspace(cwd);
@@ -175,7 +175,7 @@ export function computeReadAssociation(cwd: string): ReadAssociationResult {
   return { status: "ok", detailed, summary };
 }
 
-/** Truncate full `lineNo|text` display lines for terminal readability. */
+/** 截断完整 `lineNo|text` 展示行，便于终端阅读。 */
 export function truncateAssocDisplayLine(
   line: string,
   maxLen = MAX_ASSOC_DETAIL_LINE_LEN
@@ -184,7 +184,7 @@ export function truncateAssocDisplayLine(
   return line.slice(0, maxLen) + "...";
 }
 
-/** `[n%] path` with optional `关键词：kw1 kw2` suffix. */
+/** 格式为 `[n%] path`，可选后缀 `关键词：kw1 kw2`。 */
 export function formatAssocHeader(entry: ReadAssociationEntry): string {
   const base = `[${entry.matchPercent}%] ${entry.path}`;
   if (entry.keywords.length === 0) return base;
@@ -201,7 +201,7 @@ function formatDetailedEntry(entry: ReadAssociationEntry): string {
 }
 
 /**
- * Render `# 联想区` block for stdout, or null when the section should be omitted.
+ * 渲染 stdout 用的 `# 联想区` 块；应省略该区时返回 null。
  */
 export function formatAssociationSection(result: ReadAssociationResult): string | null {
   if (result.status === "missing_index") {

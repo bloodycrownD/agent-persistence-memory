@@ -1,7 +1,6 @@
 /**
  * @module read
- * Provides a consolidated view of all core memory sections (role, persist, dynamic).
- * This is the primary command used by Agents to initialize their context.
+ * 汇总输出核心记忆段（role / persist / dynamic），供 Agent 初始化上下文。
  */
 
 import type { Command } from "commander";
@@ -13,9 +12,7 @@ import {
 } from "../../services/read-association-service";
 import type { Section } from "../../schemas/config";
 
-/**
- * Defines the order and display labels for the consolidated memory view.
- */
+/** 汇总视图中各记忆段的展示顺序与标题。 */
 const SECTION_MAP: Array<{ id: Section; label: string }> = [
   { id: "role", label: "角色" },
   { id: "persist", label: "持久记忆" },

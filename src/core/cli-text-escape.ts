@@ -1,6 +1,6 @@
 /**
- * Unescape CLI string arguments after shell/argv parsing.
- * Only \\n \\t \\r \\\\ are expanded; other \\X keeps backslash + character.
+ * 对 shell/argv 解析后的 CLI 字符串参数做反转义。
+ * 仅展开 \\n、\\t、\\r、\\\\；其它 \\X 保留反斜杠与后续字符。
  */
 export function unescapeCliText(input: string): string {
   let out = "";

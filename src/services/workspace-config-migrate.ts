@@ -8,8 +8,8 @@ import { atomicWrite } from "../storage/fs-atomic";
 const LEGACY_STATUS_FILE = "status.json";
 
 /**
- * One-time merge of legacy `.apm/status.json` into `config.json`, then delete status file.
- * Idempotent when status.json is already absent. Sync only — safe inside `ensureWorkspace`.
+ * 一次性将遗留 `.apm/status.json` 合并进 `config.json`，随后删除 status 文件。
+ * status.json 已不存在时幂等。纯同步——可在 `ensureWorkspace` 内安全调用。
  */
 export function migrateLegacyStatusIntoConfig(cwd: string): void {
   const p = apmPaths(cwd);
@@ -37,7 +37,7 @@ export function migrateLegacyStatusIntoConfig(cwd: string): void {
       ? (configRaw as Record<string, unknown>)
       : {};
 
-  // Config-wins when both files define a field; status fills gaps only (spec §6 step 3).
+  // 两文件均定义同一字段时以 config 为准；status 仅补缺（spec §6 步骤 3）。
   const merged = mergeConfigWithDefaults({
     ...base,
     initializedAt: base.initializedAt ?? statusRaw.initializedAt,
@@ -51,7 +51,7 @@ export function migrateLegacyStatusIntoConfig(cwd: string): void {
   });
 
   const parsed = ConfigSchema.parse(merged);
-  // No await: atomicWrite has no internal await, so the write finishes in this tick.
+  // 无需 await：atomicWrite 内部无 await，本 tick 内写完。
   void atomicWrite(p.config, JSON.stringify(parsed, null, 2));
   rmSync(statusPath, { force: true });
 }

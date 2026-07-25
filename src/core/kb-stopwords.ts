@@ -1,4 +1,4 @@
-/** English stopwords filtered from association keyword display (lowercase match). */
+/** 英文停用词：从联想区关键词展示中过滤（小写匹配）。 */
 const EN_STOPWORDS = new Set([
   "a",
   "an",
@@ -28,7 +28,7 @@ const EN_STOPWORDS = new Set([
   "that"
 ]);
 
-/** Chinese particles, conjunctions, and quantity fillers for keyword display only. */
+/** 中文助词、连词与数量填充词：仅用于关键词展示过滤。 */
 const ZH_STOPWORDS = new Set([
   "的",
   "得",
@@ -113,17 +113,17 @@ const ZH_STOPWORDS = new Set([
   "嘛"
 ]);
 
-/** Tokens containing `@` are treated as email-like noise. */
+/** 含 `@` 的 token 视为类邮箱噪声。 */
 const EMAIL_LIKE = /@/;
 
-/** Letters, digits, or CJK — used to detect punctuation-only tokens. */
+/** 字母、数字或 CJK——用于识别纯标点 token。 */
 const ALNUM_OR_CJK = /[a-z0-9\u4e00-\u9fff]/i;
 
 const SINGLE_CJK = /^[\u4e00-\u9fff]$/;
 
 /**
- * Whether a token should be excluded from read-association keyword display.
- * Indexing still uses full tokenization; this only affects surfaced keywords.
+ * 判断 token 是否应从 read 联想区关键词展示中排除。
+ * 索引仍使用完整分词；本函数仅影响对外展示的关键词。
  */
 export function isKbNoiseToken(term: string): boolean {
   if (!term || !term.trim()) return true;
@@ -131,7 +131,7 @@ export function isKbNoiseToken(term: string): boolean {
   if (!ALNUM_OR_CJK.test(term)) return true;
   if (EN_STOPWORDS.has(term.toLowerCase())) return true;
   if (ZH_STOPWORDS.has(term)) return true;
-  // Single CJK chars are usually segmentation noise (e.g. 的/得 split artifacts).
+  // 单字 CJK 多为分词噪声（如「的/得」切分残留）。
   if (SINGLE_CJK.test(term)) return true;
   return false;
 }

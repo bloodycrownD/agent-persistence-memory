@@ -15,7 +15,7 @@ function atomicWriteGzip(path: string, buf: Buffer): void {
   renameSync(tempPath, path);
 }
 
-/** Tokenize for indexing and search: prefers `Intl.Segmenter`, with ASCII + CJK n-gram fallback. */
+/** 索引与检索分词：优先 `Intl.Segmenter`，回退 ASCII 词与 CJK n-gram。 */
 export function kbTokenize(text: string): string[] {
   const normalized = text.replace(/\r\n/g, "\n");
   const out: string[] = [];
@@ -31,7 +31,7 @@ export function kbTokenize(text: string): string[] {
       }
       if (out.length > 0) return [...new Set(out)];
     } catch {
-      /* fall through */
+      /* 回退到下方 ASCII/CJK 分词 */
     }
   }
   const lower = normalized.toLowerCase();
@@ -65,7 +65,7 @@ function extractKbDoc(raw: string): { body: string; title: string } {
   return { body, title };
 }
 
-/** Recurse all `.md` under `kbRoot`; skip only directories named `index`. */
+/** 递归收集 `kbRoot` 下全部 `.md`；仅跳过名为 `index` 的目录。 */
 function walkKbMarkdownUnderKbRoot(kbRoot: string, relDir = ""): string[] {
   const dir = relDir ? join(kbRoot, relDir) : kbRoot;
   const out: string[] = [];
@@ -83,7 +83,7 @@ function walkKbMarkdownUnderKbRoot(kbRoot: string, relDir = ""): string[] {
 }
 
 /**
- * Resolve a kb-relative path under `kbRoot` (posix `rel`); rejects traversal outside kb.
+ * 将 kb 相对路径（posix `rel`）解析到 `kbRoot` 下；拒绝越出 kb 的路径穿越。
  */
 export function resolveKbIndexedPath(kbRoot: string, rel: string): string {
   const safe = rel.replace(/\\/g, "/");
@@ -99,7 +99,7 @@ export function resolveKbIndexedPath(kbRoot: string, rel: string): string {
   return abs;
 }
 
-/** Load persisted MiniSearch index; returns null when gzip index is absent. */
+/** 加载已持久化的 MiniSearch 索引；gzip 索引不存在时返回 null。 */
 export function loadKbMiniSearch(cwd: string): MiniSearch<KbIndexDoc> | null {
   ensureWorkspace(cwd);
   const p = apmPaths(cwd);
@@ -116,7 +116,7 @@ export type KbSearchHitEx = {
   match: Record<string, string[]>;
 };
 
-/** Run BM25+ search on a loaded index; results are score-ordered hits with match metadata. */
+/** 在已加载索引上执行 BM25+ 检索；结果按得分排序并含命中元数据。 */
 export function searchKbIndex(ms: MiniSearch<KbIndexDoc>, query: string, limit: number): KbSearchHitEx[] {
   const raw = ms.search(query, { fuzzy: 0.2, prefix: true }).slice(0, limit);
   return raw.map((r) => {
@@ -160,7 +160,7 @@ export async function rebuildKbIndex(cwd: string): Promise<void> {
 
 export type KbSearchHit = { path: string; title: string; score: number };
 
-/** CLI `kb search`: throws when index file is missing (T7). */
+/** CLI `kb search`：索引文件缺失时抛错（T7）。 */
 export function searchKb(cwd: string, query: string, limit = 5): KbSearchHit[] {
   ensureWorkspace(cwd);
   const p = apmPaths(cwd);
