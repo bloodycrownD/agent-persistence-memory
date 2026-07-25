@@ -5,7 +5,6 @@ import { buildProgram } from "./cli/register";
 export { buildProgram };
 export { nowLocal } from "./core/time";
 export { parseFrontMatter } from "./storage/markdown";
-export { assertSafeName } from "./core/name-sanitize";
 
 async function main(argv: string[]): Promise<void> {
   const program = buildProgram();

@@ -8,9 +8,8 @@ import { migrateLegacyStatusIntoConfig } from "../services/workspace-config-migr
 import { ConfigSchema } from "../schemas/config";
 
 /**
- * Canonical paths under `.apm/`: memory (role/persist/dynamic + archive),
- * kb (docs, index/search.json.gz). Callers use this object
- * instead of hard-coding layout segments.
+ * `.apm/` 规范路径：memory 三段在 `memory/`；archive 在 `kb/archive`；
+ * kb 含 docs、index（及 archive）。调用方应使用本对象而非硬编码布局段。
  */
 export function apmPaths(cwd: string) {
   const root = join(cwd, ".apm");
@@ -138,9 +137,3 @@ export function ensureWorkspace(cwd: string): void {
     createWorkspaceIdempotent(cwd);
   }
 }
-
-/** @deprecated Use {@link isWorkspaceComplete}. */
-export const isV2WorkspaceComplete = isWorkspaceComplete;
-
-/** @deprecated Use {@link createWorkspaceIdempotent}. */
-export const createWorkspaceV2Idempotent = createWorkspaceIdempotent;
