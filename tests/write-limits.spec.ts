@@ -56,13 +56,13 @@ describe("write limits / stdin / validate", () => {
     expect(readMemoryBody(dir, "role.md")).toBe(before);
   });
 
-  it("T-WL-06: replace over max fails with got and leaves file unchanged", async () => {
+  it("T-WL-06: validate over max fails with got (replace removed)", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     await runCli(["config", "set", "--section", "role", "--max", "5"], dir);
     await runCli(["role", "write", "--text", "abcde"], dir);
     const before = readMemoryBody(dir, "role.md");
-    const err = await runCliFail(["role", "replace", "--old", "a", "--new", "ZZZZZ"], dir);
+    const err = await runCliFail(["role", "validate", "--text", "abcdef"], dir);
     expect(err).toMatch(/got/i);
     expect(readMemoryBody(dir, "role.md")).toBe(before);
   });

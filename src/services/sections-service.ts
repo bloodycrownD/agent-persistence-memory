@@ -5,8 +5,8 @@ import {
   buildMemorySnapshotArchiveRelPath,
   isMemorySnapshotSection
 } from "../core/memory-snapshot-path";
+import { extractMarkdownBodyRelaxed } from "../core/markdown-body";
 import { nowLocal } from "../core/time";
-import { applySubstringReplace } from "../core/substring-replace";
 import { countChars } from "../core/validate";
 import { formatZodError } from "../core/schema-errors";
 import { renderFrontMatter, parseFrontMatter } from "../storage/markdown";
@@ -14,6 +14,7 @@ import { apmPaths } from "../storage/paths";
 import { withGlobalLock } from "../storage/fs-lock";
 import { serialWrite } from "../storage/serial";
 import { atomicWrite } from "../storage/fs-atomic";
+import { LOCAL_TIMESTAMP_MESSAGE, LOCAL_TIMESTAMP_RE } from "../schemas/local-timestamp";
 import { readConfig } from "./config-service";
 import { resolveKbIndexedPath } from "./kb-index-service";
 import type { Limits, Section } from "../schemas/config";
@@ -58,40 +59,18 @@ export function validateSectionContent(
   section: Section,
   text: string
 ): { len: number; max: number } {
+  assertWithinMax(cwd, section, text);
   const limits = getSectionLimits(cwd, section);
-  const len = countChars(text);
-  if (len > limits.max) {
-    throw new Error(formatLengthError(section, len, limits.max));
-  }
-  return { len, max: limits.max };
+  return { len: countChars(text), max: limits.max };
 }
 
 type SectionMeta = { createdAt: string; updatedAt: string };
-const LOCAL_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 const SectionMetaSchema = z
   .object({
-    createdAt: z.string().regex(LOCAL_TIMESTAMP_RE, "must match YYYY-MM-DD HH:mm:ss (system local timezone)"),
-    updatedAt: z.string().regex(LOCAL_TIMESTAMP_RE, "must match YYYY-MM-DD HH:mm:ss (system local timezone)")
+    createdAt: z.string().regex(LOCAL_TIMESTAMP_RE, LOCAL_TIMESTAMP_MESSAGE),
+    updatedAt: z.string().regex(LOCAL_TIMESTAMP_RE, LOCAL_TIMESTAMP_MESSAGE)
   })
   .strict();
-
-/**
- * 宽松提取记忆段正文（供 `apm read` 与联想区使用）：
- * - 不以 `---\n` 开头 → 全文作为正文；
- * - 有 front matter 且 `parseFrontMatter` 成功 → 返回剥离后的正文（不校验 meta schema）；
- * - `parseFrontMatter` 失败 → 保留全文作为正文。
- */
-function extractSectionBodyRelaxed(raw: string): string {
-  let body = raw.replace(/\r\n/g, "\n");
-  if (!body.startsWith("---\n")) {
-    return body;
-  }
-  try {
-    return parseFrontMatter(body).content;
-  } catch {
-    return body;
-  }
-}
 
 function readSectionFile(path: string): { meta: SectionMeta | null; content: string } {
   const raw = readFileSync(path, "utf8");
@@ -122,26 +101,38 @@ function readSectionFile(path: string): { meta: SectionMeta | null; content: str
   }
 }
 
+/**
+ * 写路径读取：严格 FM 成功则保留 createdAt；损坏/缺失 FM 时用宽松正文策略，createdAt 回退 nowLocal。
+ */
+function readSectionCreatedAtForWrite(path: string): string {
+  try {
+    const prev = readSectionFile(path);
+    return prev.meta?.createdAt ?? nowLocal();
+  } catch {
+    return nowLocal();
+  }
+}
+
 export function readSectionContent(cwd: string, section: Section): string {
   const p = sectionPath(cwd, section);
   return readSectionFile(p).content;
 }
 
 /**
- * 宽松读取记忆段正文（不校验 front matter）；`show`/`write`/`replace` 仍应使用 {@link readSectionContent}。
+ * 宽松读取记忆段正文（不校验 front matter）；`show` 仍应使用 {@link readSectionContent}。
  */
 export function readSectionContentRelaxed(cwd: string, section: Section): string {
   const p = sectionPath(cwd, section);
   const raw = readFileSync(p, "utf8");
-  return extractSectionBodyRelaxed(raw);
+  return extractMarkdownBodyRelaxed(raw);
 }
 
 export type WriteSectionOptions = {
-  /** 是否写入 archive 快照；仅 CLI write 为 true，replace 等为 false。 */
+  /** 是否写入 archive 快照；默认 false；仅 CLI write 显式传 true。 */
   snapshot?: boolean;
 };
 
-/** 写入记忆段正文；超长时抛错，不落盘。 */
+/** 写入记忆段正文；超长时抛错，不落盘。损坏/缺失 front matter 时自愈写出合法 FM。 */
 export async function writeSection(
   cwd: string,
   section: Section,
@@ -152,10 +143,9 @@ export async function writeSection(
 
   const p = sectionPath(cwd, section);
   const paths = apmPaths(cwd);
-  const prev = readSectionFile(p);
-  const createdAt = prev.meta?.createdAt ?? nowLocal();
+  const createdAt = readSectionCreatedAtForWrite(p);
   const payload = renderFrontMatter({ createdAt, updatedAt: nowLocal() }, text);
-  const snapshot = opts.snapshot ?? true;
+  const snapshot = opts.snapshot ?? false;
   await withGlobalLock(paths.lock, async () => {
     await serialWrite(p, async () => {
       await atomicWrite(p, payload);
@@ -169,17 +159,4 @@ export async function writeSection(
       });
     }
   });
-}
-
-/** 在记忆段正文中替换子串后持久化（limits、锁、原子写与 writeSection 一致）。 */
-export async function replaceSection(
-  cwd: string,
-  section: Section,
-  oldText: string,
-  newText: string,
-  replaceAll: boolean
-): Promise<void> {
-  const content = readSectionContent(cwd, section);
-  const next = applySubstringReplace(content, oldText, newText, replaceAll);
-  await writeSection(cwd, section, next, { snapshot: false });
 }

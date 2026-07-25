@@ -1,12 +1,10 @@
 import type { Command } from "commander";
 import { resolveCliBodyText } from "../../core/cli-body-input";
-import { unescapeCliText } from "../../core/cli-text-escape";
 import { ensureWorkspace } from "../../storage/paths";
 import { toLineNumbered } from "../../formatters/line-number";
 import { rebuildKbIndex } from "../../services/kb-index-service";
 import {
   readSectionContent,
-  replaceSection,
   validateSectionContent,
   writeSection
 } from "../../services/sections-service";
@@ -35,7 +33,7 @@ export function registerSectionCommands(cmd: Command, section: Section): void {
       const cwd = process.cwd();
       ensureWorkspace(cwd);
       const text = await resolveCliBodyText(opts);
-      await writeSection(cwd, section, text);
+      await writeSection(cwd, section, text, { snapshot: true });
       await afterMemorySectionMutation(cwd, section);
       console.log("OK");
     });
@@ -51,21 +49,5 @@ export function registerSectionCommands(cmd: Command, section: Section): void {
       const text = await resolveCliBodyText(opts);
       const { len, max } = validateSectionContent(cwd, section, text);
       console.log(`OK: ${len}/${max}`);
-    });
-
-  cmd
-    .command("replace")
-    .description("Replace --old substring in section body (first occurrence by default)")
-    .requiredOption("--old <old>", "Exact substring to find")
-    .requiredOption("--new <new>", "Replacement text (may be empty)")
-    .option("--all", "Replace all occurrences of --old")
-    .action(async (opts: { old: string; new: string; all?: boolean }) => {
-      const cwd = process.cwd();
-      ensureWorkspace(cwd);
-      const oldText = unescapeCliText(opts.old);
-      const newText = unescapeCliText(opts.new);
-      await replaceSection(cwd, section, oldText, newText, Boolean(opts.all));
-      await afterMemorySectionMutation(cwd, section);
-      console.log("OK");
     });
 }

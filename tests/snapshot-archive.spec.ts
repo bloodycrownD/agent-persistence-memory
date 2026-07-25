@@ -87,18 +87,16 @@ describe("memory write snapshot archive", () => {
     expect(latestText).not.toContain(bodyB);
   });
 
-  it("T-SA-04: replace / validate 不新增 archive 快照", async () => {
+  it("T-SA-04: validate 不新增 archive 快照", async () => {
     const dir = newTempDir();
     await initWithLimits(dir);
-    await runCli(["dynamic", "write", "--text", "seed_for_replace"], dir);
+    await runCli(["dynamic", "write", "--text", "seed_for_validate"], dir);
     const n = countLayeredSnapshots(kbRoot(dir));
-    await runCli(["dynamic", "replace", "--old", "seed", "--new", "replaced"], dir);
-    expect(countLayeredSnapshots(kbRoot(dir))).toBe(n);
     await runCli(["dynamic", "validate", "--text", "draft_only"], dir);
     expect(countLayeredSnapshots(kbRoot(dir))).toBe(n);
     await runCli(["role", "write", "--text", "role_seed"], dir);
     const n2 = countLayeredSnapshots(kbRoot(dir));
-    await runCli(["role", "replace", "--old", "seed", "--new", "done"], dir);
+    await runCli(["role", "validate", "--text", "draft_role"], dir);
     expect(countLayeredSnapshots(kbRoot(dir))).toBe(n2);
   });
 

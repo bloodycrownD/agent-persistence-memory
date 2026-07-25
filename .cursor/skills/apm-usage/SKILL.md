@@ -1,6 +1,6 @@
 ---
 name: apm-usage
-description: 指导 Agent 与开发者使用本仓库 APM CLI（init、read、role/persist/dynamic、kb 检索/索引、联想区、replace 局部更新、validate 干跑、stdin 管道写入）。在用户提到 apm、外置记忆、.apm、apm read、知识库、会话恢复或 Agent 初始化上下文时使用。
+description: 指导 Agent 与开发者使用本仓库 APM CLI（init、read、role/persist/dynamic、kb 检索/索引、联想区、validate 干跑、stdin 管道写入）。在用户提到 apm、外置记忆、.apm、apm read、知识库、会话恢复或 Agent 初始化上下文时使用。
 disable-model-invocation: true
 ---
 
@@ -65,16 +65,14 @@ apm persist write --text "…"  # 可选：长期结论
 
 ### 记忆：`role` | `persist` | `dynamic`
 
-`show` · `write` · `validate` · `replace --old <原文> --new <新文> [--all]`
+`show` · `write` · `validate`
 
 ```bash
 apm role show
 apm role write --text "…"
 apm role validate --text "…"
-apm role replace --old "旧" --new "新"
 apm persist write --text "…"
 apm dynamic write --text "…"
-apm dynamic replace --old "…" --new "…"
 ```
 
 #### 正文输入：`--text`、管道、`--stdin`
@@ -103,13 +101,11 @@ echo "草稿" | apm persist validate
 - 规则与 `write` 相同（仅检查 max）；成功输出 `OK: <当前长度>/<max>`。
 - 不写盘、不归档、不触发索引重建。
 
-#### `replace` 其他说明
+#### 写入说明
 
-- `replace`：`--old` 须与 `show`/`read` 正文**原样**匹配；默认只换第一次，全换加 `--all`。
-- `replace` **不**写入 archive 快照（仅 `write` 触发快照）。
 - 全量覆盖用 `write`。
-- 写入时不要手写 YAML front matter。
-- `--old` / `--new` 支持转义（`\n` `\t` 等）。
+- 写入时不要手写 YAML front matter；若磁盘上 FM 损坏/缺失，`write` 会自愈写出合法 FM（`show` 仍严格校验）。
+- `--text` 支持转义（`\n` `\t` 等）。
 
 ### memory 三段 write 与 archive 快照
 
@@ -125,7 +121,6 @@ echo "草稿" | apm persist validate
 |------|--------------|
 | `role` / `persist` / `dynamic` **`write`** | 每次 +1 条分层快照 |
 | `dynamic write --text ""` | 目标变为空模板，仍 +1 条空模板快照 |
-| `replace` | **不**新增快照 |
 | `validate` | **不**写盘、不归档 |
 
 旧版扁平 `archive/dynamic-<时间戳>.md` 若已存在，索引 rebuild 后仍可检索，与新分层路径共存。
@@ -141,7 +136,7 @@ apm kb index rebuild
 
 | 操作 | 自动 `kb index rebuild` |
 |------|-------------------------|
-| `role` / `persist` / `dynamic` 的 write、replace | 是 |
+| `role` / `persist` / `dynamic` 的 write | 是 |
 | 直接写入/移动 `kb/docs/` | 否（需手动 `rebuild`） |
 | `validate`（各段） | 否 |
 
