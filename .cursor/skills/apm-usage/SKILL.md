@@ -18,22 +18,22 @@ apm persist write --text "…"  # 可选：长期结论
 
 - 在**项目根目录**（将创建或使用 `.apm/`）执行。
 - 入口：`apm` 或 `npx apm`（本仓库需先 `npm run build`）。
-- **工作区自动补齐**：任意命令首次执行时会创建或补全 `.apm/` 目录树；`apm init` 等价且幂等。废弃的 `.apm/dynamic/` 与 `kb/dynamic/` 若存在会被自动删除（任务 dynamic 在 `memory/dynamic.md`）。
+- **工作区自动补齐**：任意命令首次执行时会创建或补全 `.apm/` 目录树；`apm init` 等价且幂等。
 
 ## 工作区
 
 ```
-.apm/
-  config.json          # 各段 max 上限；initializedAt / updatedAt / lastReadAt
+.apm/                   # 运行态目录（整体 .gitignore）
+  config/config.json   # 各段 max 上限；initializedAt / updatedAt / lastReadAt
+  config/index.gz        # 搜索索引（apm index build 产物）
   memory/role.md       # 角色
   memory/persist.md    # 持久记忆
   memory/dynamic.md    # 动态记忆（当前任务）
-  kb/docs/             # 知识库 .md（可嵌套）
-  kb/archive/          # memory 三段 write 时写入的分层快照（见下文）
-  kb/index/search.json.gz
+  archive/             # memory 三段 write 时写入的分层快照（见下文）
+docs/                   # 项目根，知识库 .md（可嵌套，入版本控制）
 ```
 
-知识库文档请直接写入 `kb/docs/`（如 `Iterations/foo/prd.md`），再执行 `apm kb index rebuild`。检索与联想中的路径相对 `kb/`（如 `docs/foo.md`、`archive/2026/06/18/dynamic/143052127.md`；旧版扁平 `archive/dynamic-....md` 仍可被索引）。
+知识库文档请直接写入项目根 `docs/`（如 `Iterations/foo/prd.md`），再执行 `apm index build`。检索与联想中的路径带来源前缀（如 `docs/foo.md`、`archive/2026/06/18/dynamic/143052127.md`；旧版扁平 `archive/dynamic-....md` 仍可被索引）。
 
 ## 默认长度上限（仅 max，无下限）
 
@@ -45,21 +45,21 @@ apm persist write --text "…"  # 可选：长期结论
 
 - **无下限**：任意短文本（含 1 字、空串）均可写入。
 - **仅上限**：超过 `max` 时拒绝写入，报错含 `got n, max m, need k fewer chars`。
-- `kb/docs/` 下的知识库文件**不受**上述 max 限制（直接写文件，不经 CLI write）。
+- `docs/` 下的知识库文件**不受**上述 max 限制（直接写文件，不经 CLI write）。
 
 ## `apm read` 输出
 
 无内容的段会省略。顺序：
 
 1. `# 角色`、`# 持久记忆`、`# 动态记忆`（正文已去 YAML front matter）
-2. `# 联想区`（用三段记忆正文检索 `kb/`，不含 `index/`）
+2. `# 联想区`（用三段记忆正文检索 `docs/` 与 `archive/`）
 
 | 联想区 | 说明 |
 |--------|------|
 | 详细区 | ≤5 条；`[匹配率%] 路径 关键词：…` + ≤3 行 `行号\|正文`（超 120 字截断）；条间空一行 |
 | 简略区 | ≤10 条；仅头部；条间无空行；与详细区间空一行 |
 | 无命中 | 不输出联想区 |
-| 无索引 | 输出提示执行 `apm kb index rebuild` |
+| 无索引 | 输出提示执行 `apm index build` |
 
 ## 命令
 
@@ -89,7 +89,7 @@ echo -e "任务：…\n下一步：…" | apm dynamic write
 "任务：…`n下一步：…" | apm dynamic write
 ```
 
-**无 `--file` 参数**：长知识库文档请直接写入 `.apm/kb/docs/`，再执行 `apm kb index rebuild`。
+**无 `--file` 参数**：长知识库文档请直接写入项目根 `docs/`，再执行 `apm index build`。
 
 #### `validate`（干跑，不落盘）
 
@@ -111,11 +111,11 @@ echo "草稿" | apm persist validate
 
 每次 `role` / `persist` / `dynamic` 的 **`write`** 会将**本次落盘全文**（含 YAML front matter）同时写入目标文件与分层 archive 快照；快照内容与目标文件**完全相同**（存新版，非覆盖前的旧版）。
 
-| 路径模式（相对 `kb/`） | 说明 |
+| 路径模式（相对 `.apm/archive/`） | 说明 |
 |------------------------|------|
-| `archive/{yyyy}/{MM}/{dd}/role/{HHmmssSSS}.md` | role write 快照 |
-| `archive/{yyyy}/{MM}/{dd}/persist/{HHmmssSSS}.md` | persist write 快照 |
-| `archive/{yyyy}/{MM}/{dd}/dynamic/{HHmmssSSS}.md` | dynamic write 快照 |
+| `{yyyy}/{MM}/{dd}/role/{HHmmssSSS}.md` | role write 快照 |
+| `{yyyy}/{MM}/{dd}/persist/{HHmmssSSS}.md` | persist write 快照 |
+| `{yyyy}/{MM}/{dd}/dynamic/{HHmmssSSS}.md` | dynamic write 快照 |
 
 | 命令 | archive 快照 |
 |------|--------------|
@@ -123,22 +123,23 @@ echo "草稿" | apm persist validate
 | `dynamic write --text ""` | 目标变为空模板，仍 +1 条空模板快照 |
 | `validate` | **不**写盘、不归档 |
 
-旧版扁平 `archive/dynamic-<时间戳>.md` 若已存在，索引 rebuild 后仍可检索，与新分层路径共存。
+旧版扁平 `archive/dynamic-<时间戳>.md` 若已存在（位于 `.apm/archive/`），索引 rebuild 后仍可检索，与新分层路径共存。
 
-### 知识库
+### 知识库与索引
 
 ```bash
-apm kb search --q "<查询>"
-apm kb index rebuild
+apm index build       # 扫描项目根 docs/ 与 .apm/archive/，重建 .apm/config/index.gz
 ```
 
-知识库正文不经 CLI 写入：直接复制/移动/编辑 `.apm/kb/docs/**/*.md` 后执行 `apm kb index rebuild`。
+知识库正文不经 CLI 写入：直接复制/移动/编辑项目根 `docs/**/*.md` 后执行 `apm index build`。
 
-| 操作 | 自动 `kb index rebuild` |
-|------|-------------------------|
+| 操作 | 自动 `index build` |
+|------|--------------------|
 | `role` / `persist` / `dynamic` 的 write | 是 |
-| 直接写入/移动 `kb/docs/` | 否（需手动 `rebuild`） |
+| 直接写入/移动 `docs/` | 否（需手动 `index build`） |
 | `validate`（各段） | 否 |
+
+> `apm read` 的联想区会消费索引；没有独立的 search 命令，检索结果通过 `apm read` 输出。
 
 ### 配置
 
@@ -164,8 +165,8 @@ apm dynamic write --text "任务：…\n下一步：…"
 **写入知识库：**
 
 ```bash
-# 直接复制/移动到 .apm/kb/docs/ 后：
-apm kb index rebuild
+# 直接复制/移动到项目根 docs/ 后：
+apm index build
 apm read
 ```
 
@@ -182,17 +183,17 @@ apm dynamic write --text "草稿"
 | 路径 | 用途 |
 |------|------|
 | `.apm/memory/` | CLI 外置记忆，`apm read` 使用 |
-| `.apm/dynamic/`（根下） | **已废弃**，勿手动创建；存在时会被 CLI 自动删除 |
-| `kb/dynamic/` | **已废弃**，存在时会被 CLI 自动删除 |
+| `.apm/archive/` | memory write 的分层快照，参与索引检索 |
+| `docs/`（项目根） | 知识库 .md，入版本控制；参与索引检索 |
 | 仓库内其他 `memory/` | 不参与 `apm read`，不要当作 `.apm` 使用 |
 
 ## 故障排查
 
 | 现象 | 处理 |
 |------|------|
-| `Knowledge index missing` | `apm kb index rebuild` |
-| 联想区无结果 | 记忆与 kb 有共同词；`rebuild` |
-| 知识库改完搜不到 | `apm kb index rebuild` |
+| `Knowledge index missing` | `apm index build` |
+| 联想区无结果 | 记忆与 docs/archive 有共同词；`index build` |
+| 知识库改完搜不到 | `apm index build` |
 | 长度报错 `got … max … need … fewer` | 缩短正文，或 `config set --max` 调大；可先 `validate` 干跑 |
 | `\n` 未换行 | 使用 `\n` 转义序列、管道真实换行，或 `--stdin` |
 | `Cannot use both --text and --stdin` | 只选其一 |

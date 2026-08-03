@@ -15,7 +15,7 @@ export function memorySnapshotSectionDir(section: Section): "role" | "persist" |
 }
 
 /**
- * 生成 archive 相对 kb/ 的路径：archive/yyyy/MM/dd/{section}/HHmmssSSS.md
+ * 生成相对 `.apm/archive/` 的快照路径：yyyy/MM/dd/{section}/HHmmssSSS.md
  * @param section 记忆段
  * @param at 写入时刻（默认当前本地时间）；测试可注入固定 Date
  */
@@ -26,5 +26,5 @@ export function buildMemorySnapshotArchiveRelPath(section: Section, at: Date = n
   const MM = pad(at.getMonth() + 1);
   const dd = pad(at.getDate());
   const ts = `${pad(at.getHours())}${pad(at.getMinutes())}${pad(at.getSeconds())}${pad(at.getMilliseconds(), 3)}`;
-  return `archive/${yyyy}/${MM}/${dd}/${dir}/${ts}.md`;
+  return `${yyyy}/${MM}/${dd}/${dir}/${ts}.md`;
 }

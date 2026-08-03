@@ -1,9 +1,9 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
-/** 分层 archive 快照路径：archive/yyyy/MM/dd/{role|persist|dynamic}/HHmmssSSS.md */
+/** 分层 archive 快照路径（相对 `.apm/archive/`）：yyyy/MM/dd/{role|persist|dynamic}/HHmmssSSS.md */
 export const LAYERED_SNAPSHOT_REL_RE =
-  /^archive\/\d{4}\/\d{2}\/\d{2}\/(role|persist|dynamic)\/\d{9}\.md$/;
+  /^\d{4}\/\d{2}\/\d{2}\/(role|persist|dynamic)\/\d{9}\.md$/;
 
 /** 递归收集目录下全部 .md 绝对路径。 */
 export function collectMdFilesRecursive(root: string): string[] {
@@ -20,22 +20,20 @@ export function collectMdFilesRecursive(root: string): string[] {
   return out;
 }
 
-/** 列出 kb/archive 下符合分层路径规则的快照（相对 kb/）。 */
-export function listLayeredSnapshotRels(kbRoot: string): string[] {
-  const archiveRoot = join(kbRoot, "archive");
-  return collectMdFilesRecursive(archiveRoot)
-    .map((abs) => relative(kbRoot, abs).replace(/\\/g, "/"))
+/** 列出 `.apm/archive/` 下符合分层路径规则的快照（相对 archive 目录）。 */
+export function listLayeredSnapshotRels(archiveDir: string): string[] {
+  return collectMdFilesRecursive(archiveDir)
+    .map((abs) => relative(archiveDir, abs).replace(/\\/g, "/"))
     .filter((rel) => LAYERED_SNAPSHOT_REL_RE.test(rel))
     .sort();
 }
 
 /** 按 mtime 返回最新的分层快照绝对路径。 */
-export function latestLayeredSnapshotAbs(kbRoot: string, sectionDir?: "role" | "persist" | "dynamic"): string | undefined {
-  const archiveRoot = join(kbRoot, "archive");
-  const files = collectMdFilesRecursive(archiveRoot)
+export function latestLayeredSnapshotAbs(archiveDir: string, sectionDir?: "role" | "persist" | "dynamic"): string | undefined {
+  const files = collectMdFilesRecursive(archiveDir)
     .map((abs) => ({
       abs,
-      rel: relative(kbRoot, abs).replace(/\\/g, "/"),
+      rel: relative(archiveDir, abs).replace(/\\/g, "/"),
       mtime: statSync(abs).mtimeMs
     }))
     .filter(({ rel }) => LAYERED_SNAPSHOT_REL_RE.test(rel))
@@ -46,8 +44,8 @@ export function latestLayeredSnapshotAbs(kbRoot: string, sectionDir?: "role" | "
 }
 
 /** 统计分层 archive 快照数量，可按段目录过滤。 */
-export function countLayeredSnapshots(kbRoot: string, sectionDir?: "role" | "persist" | "dynamic"): number {
-  return listLayeredSnapshotRels(kbRoot).filter((rel) => !sectionDir || rel.includes(`/${sectionDir}/`)).length;
+export function countLayeredSnapshots(archiveDir: string, sectionDir?: "role" | "persist" | "dynamic"): number {
+  return listLayeredSnapshotRels(archiveDir).filter((rel) => !sectionDir || rel.includes(`/${sectionDir}/`)).length;
 }
 
 /** 读取 memory 段目标文件全文。 */

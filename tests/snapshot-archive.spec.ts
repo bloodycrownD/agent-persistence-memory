@@ -26,15 +26,15 @@ describe("memory-snapshot-path 单元", () => {
 
   it("buildMemorySnapshotArchiveRelPath 固定日期生成路径", () => {
     const at = new Date(2026, 5, 18, 14, 30, 52, 127);
-    expect(buildMemorySnapshotArchiveRelPath("role", at)).toBe("archive/2026/06/18/role/143052127.md");
+    expect(buildMemorySnapshotArchiveRelPath("role", at)).toBe("2026/06/18/role/143052127.md");
     expect(buildMemorySnapshotArchiveRelPath("dynamicDetail", at)).toBe(
-      "archive/2026/06/18/dynamic/143052127.md"
+      "2026/06/18/dynamic/143052127.md"
     );
   });
 });
 
 describe("memory write snapshot archive", () => {
-  const kbRoot = (dir: string) => join(dir, ".apm", "kb");
+  const archiveDir = (dir: string) => join(dir, ".apm", "archive");
 
   async function initWithLimits(dir: string): Promise<void> {
     await runCli(["init"], dir);
@@ -50,9 +50,9 @@ describe("memory write snapshot archive", () => {
     await runCli(["role", "write", "--text", body], dir);
     const target = readMemorySectionFile(dir, "role");
     expect(target).toContain(body);
-    const rels = listLayeredSnapshotRels(kbRoot(dir)).filter((r) => r.includes("/role/"));
+    const rels = listLayeredSnapshotRels(archiveDir(dir)).filter((r) => r.includes("/role/"));
     expect(rels.length).toBe(1);
-    const snapshot = readFileSync(join(kbRoot(dir), rels[0]!), "utf8");
+    const snapshot = readFileSync(join(archiveDir(dir), rels[0]!), "utf8");
     expect(snapshot).toBe(target);
   });
 
@@ -61,7 +61,7 @@ describe("memory write snapshot archive", () => {
     await initWithLimits(dir);
     await runCli(["persist", "write", "--text", "persist_body_xyz"], dir);
     await runCli(["dynamic", "write", "--text", "dynamic_body_xyz"], dir);
-    const rels = listLayeredSnapshotRels(kbRoot(dir));
+    const rels = listLayeredSnapshotRels(archiveDir(dir));
     expect(rels.some((r) => r.includes("/persist/"))).toBe(true);
     expect(rels.some((r) => r.includes("/dynamic/"))).toBe(true);
     expect(rels.filter((r) => r.includes("/role/")).length).toBe(0);
@@ -73,13 +73,13 @@ describe("memory write snapshot archive", () => {
     const bodyB = "body_B_xxxxxxxx";
     const bodyC = "body_C_yyyyyyyy";
     await runCli(["dynamic", "write", "--text", bodyB], dir);
-    const nAfterFirst = countLayeredSnapshots(kbRoot(dir), "dynamic");
+    const nAfterFirst = countLayeredSnapshots(archiveDir(dir), "dynamic");
     await runCli(["dynamic", "write", "--text", bodyC], dir);
     const target = readMemorySectionFile(dir, "dynamic");
     expect(target).toContain(bodyC);
     expect(target).not.toContain(bodyB);
-    expect(countLayeredSnapshots(kbRoot(dir), "dynamic")).toBe(nAfterFirst + 1);
-    const latest = latestLayeredSnapshotAbs(kbRoot(dir), "dynamic");
+    expect(countLayeredSnapshots(archiveDir(dir), "dynamic")).toBe(nAfterFirst + 1);
+    const latest = latestLayeredSnapshotAbs(archiveDir(dir), "dynamic");
     expect(latest).toBeTruthy();
     const latestText = readFileSync(latest!, "utf8");
     expect(latestText).toBe(target);
@@ -91,44 +91,45 @@ describe("memory write snapshot archive", () => {
     const dir = newTempDir();
     await initWithLimits(dir);
     await runCli(["dynamic", "write", "--text", "seed_for_validate"], dir);
-    const n = countLayeredSnapshots(kbRoot(dir));
+    const n = countLayeredSnapshots(archiveDir(dir));
     await runCli(["dynamic", "validate", "--text", "draft_only"], dir);
-    expect(countLayeredSnapshots(kbRoot(dir))).toBe(n);
+    expect(countLayeredSnapshots(archiveDir(dir))).toBe(n);
     await runCli(["role", "write", "--text", "role_seed"], dir);
-    const n2 = countLayeredSnapshots(kbRoot(dir));
+    const n2 = countLayeredSnapshots(archiveDir(dir));
     await runCli(["role", "validate", "--text", "draft_role"], dir);
-    expect(countLayeredSnapshots(kbRoot(dir))).toBe(n2);
+    expect(countLayeredSnapshots(archiveDir(dir))).toBe(n2);
   });
 
   it("T-SA-05: dynamic write 空串仍 +1 快照且与目标空模板一致", async () => {
     const dir = newTempDir();
     await initWithLimits(dir);
     await runCli(["dynamic", "write", "--text", "z".repeat(12)], dir);
-    const n = countLayeredSnapshots(kbRoot(dir), "dynamic");
+    const n = countLayeredSnapshots(archiveDir(dir), "dynamic");
     await runCli(["dynamic", "write", "--text", ""], dir);
-    expect(countLayeredSnapshots(kbRoot(dir), "dynamic")).toBe(n + 1);
+    expect(countLayeredSnapshots(archiveDir(dir), "dynamic")).toBe(n + 1);
     const target = readMemorySectionFile(dir, "dynamic");
     expect(target.startsWith("---\n")).toBe(true);
     expect(target.split("\n---\n")[1]?.trim() ?? "").toBe("");
-    const latest = latestLayeredSnapshotAbs(kbRoot(dir), "dynamic");
+    const latest = latestLayeredSnapshotAbs(archiveDir(dir), "dynamic");
     expect(readFileSync(latest!, "utf8")).toBe(target);
   });
 
   it("T-SA-06: init 后首次 write 也产生 archive 快照", async () => {
     const dir = newTempDir();
     await initWithLimits(dir);
-    expect(countLayeredSnapshots(kbRoot(dir), "dynamic")).toBe(0);
+    expect(countLayeredSnapshots(archiveDir(dir), "dynamic")).toBe(0);
     await runCli(["dynamic", "write", "--text", "first_write_body"], dir);
-    expect(countLayeredSnapshots(kbRoot(dir), "dynamic")).toBe(1);
+    expect(countLayeredSnapshots(archiveDir(dir), "dynamic")).toBe(1);
   });
 
-  it("T-SA-07: write 含唯一关键词后 kb search 命中分层 archive 路径", async () => {
+  it("T-SA-07: write 含唯一关键词后 read 联想区命中分层 archive 路径", async () => {
     const dir = newTempDir();
     await initWithLimits(dir);
     const keyword = "kw_snapshot_fixture";
     await runCli(["dynamic", "write", "--text", `${keyword} ${"a".repeat(4)}`], dir);
-    const out = await runCli(["kb", "search", "--q", keyword], dir);
-    expect(out.out).toMatch(/archive\/\d{4}\/\d{2}\/\d{2}\/dynamic\//);
+    await runCli(["role", "write", "--text", keyword], dir);
+    const { out } = await runCli(["read"], dir);
+    expect(out).toMatch(/archive\/\d{4}\/\d{2}\/\d{2}\/dynamic\//);
   });
 
   it("T-SA-08: write 后 apm read 联想区含 archive/ 路径", async () => {
@@ -138,23 +139,5 @@ describe("memory write snapshot archive", () => {
     await runCli(["dynamic", "write", "--text", `${keyword} dynamic note`], dir);
     const { out } = await runCli(["read"], dir);
     expect(out).toContain("archive/");
-  });
-
-  it("T-SA-09: 旧扁平 dynamic-*.md 与新分层快照共存且均可检索", async () => {
-    const dir = newTempDir();
-    await initWithLimits(dir);
-    const legacyName = "dynamic-2020-01-01-120000.md";
-    const legacyKw = "kw_legacy_flat_dynamic";
-    const archDir = join(kbRoot(dir), "archive");
-    mkdirSync(archDir, { recursive: true });
-    writeFileSync(join(archDir, legacyName), `# Legacy\n\n${legacyKw} flat archive.\n`, "utf8");
-    await runCli(["kb", "index", "rebuild"], dir);
-    await runCli(["dynamic", "write", "--text", "new layered snapshot"], dir);
-    expect(countLayeredSnapshots(kbRoot(dir), "dynamic")).toBe(1);
-    expect(existsSync(join(archDir, legacyName))).toBe(true);
-    const searchLegacy = await runCli(["kb", "search", "--q", legacyKw], dir);
-    expect(searchLegacy.out).toContain(legacyName);
-    const searchNew = await runCli(["kb", "search", "--q", "layered snapshot"], dir);
-    expect(searchNew.out).toMatch(/archive\/\d{4}\/\d{2}\/\d{2}\/dynamic\//);
   });
 });

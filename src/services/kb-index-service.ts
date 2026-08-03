@@ -65,16 +65,15 @@ function extractKbDoc(raw: string): { body: string; title: string } {
   return { body, title };
 }
 
-/** 递归收集 `kbRoot` 下全部 `.md`；仅跳过名为 `index` 的目录。 */
-function walkKbMarkdownUnderKbRoot(kbRoot: string, relDir = ""): string[] {
-  const dir = relDir ? join(kbRoot, relDir) : kbRoot;
+/** 递归收集 `root` 下全部 `.md`（返回相对 `root` 的 posix 路径）。 */
+function walkMarkdown(root: string, relDir = ""): string[] {
+  const dir = relDir ? join(root, relDir) : root;
   const out: string[] = [];
   if (!existsSync(dir)) return out;
   for (const ent of readdirSync(dir, { withFileTypes: true })) {
-    if (ent.isDirectory() && ent.name === "index") continue;
     const rel = relDir ? `${relDir}/${ent.name}` : ent.name;
     if (ent.isDirectory()) {
-      out.push(...walkKbMarkdownUnderKbRoot(kbRoot, rel));
+      out.push(...walkMarkdown(root, rel));
     } else if (ent.isFile() && ent.name.endsWith(".md")) {
       out.push(rel.replace(/\\/g, "/"));
     }
@@ -83,28 +82,30 @@ function walkKbMarkdownUnderKbRoot(kbRoot: string, relDir = ""): string[] {
 }
 
 /**
- * 将 kb 相对路径（posix `rel`）解析到 `kbRoot` 下；拒绝越出 kb 的路径穿越。
+ * 将索引相对路径（posix `rel`，以 `docs/` 或 `archive/` 开头）解析到对应物理根。
+ * `docs/` → 项目根 `docs/`；`archive/` → `.apm/archive/`。拒绝路径穿越。
  */
-export function resolveKbIndexedPath(kbRoot: string, rel: string): string {
+export function resolveIndexedPath(cwd: string, rel: string): string {
   const safe = rel.replace(/\\/g, "/");
   if (safe.includes("..") || safe.startsWith("/")) {
-    throw new Error(`Invalid kb path: ${rel}`);
+    throw new Error(`Invalid indexed path: ${rel}`);
   }
-  const abs = join(kbRoot, safe);
-  const kbNorm = kbRoot.replace(/\\/g, "/");
-  const absNorm = abs.replace(/\\/g, "/");
-  if (absNorm !== kbNorm && !absNorm.startsWith(`${kbNorm}/`)) {
-    throw new Error(`Invalid kb path: ${rel}`);
+  const p = apmPaths(cwd);
+  if (safe.startsWith("docs/")) {
+    return join(p.docsDir, safe.slice("docs/".length));
   }
-  return abs;
+  if (safe.startsWith("archive/")) {
+    return join(p.archiveDir, safe.slice("archive/".length));
+  }
+  throw new Error(`Invalid indexed path (must start with docs/ or archive/): ${rel}`);
 }
 
 /** 加载已持久化的 MiniSearch 索引；gzip 索引不存在时返回 null。 */
 export function loadKbMiniSearch(cwd: string): MiniSearch<KbIndexDoc> | null {
   ensureWorkspace(cwd);
   const p = apmPaths(cwd);
-  if (!existsSync(p.kbSearchIndexGz)) return null;
-  const buf = gunzipSync(readFileSync(p.kbSearchIndexGz));
+  if (!existsSync(p.searchIndexGz)) return null;
+  const buf = gunzipSync(readFileSync(p.searchIndexGz));
   return MiniSearch.loadJSON<KbIndexDoc>(buf.toString("utf8"), kbMiniSearchOptions());
 }
 
@@ -138,35 +139,33 @@ export function searchKbIndex(ms: MiniSearch<KbIndexDoc>, query: string, limit: 
   });
 }
 
+/**
+ * 重建搜索索引：扫描项目根 `docs/`（前缀 `docs/`）与 `.apm/archive/`（前缀 `archive/`）。
+ * 索引写入 `.apm/config/index.gz`。
+ */
 export async function rebuildKbIndex(cwd: string): Promise<void> {
   ensureWorkspace(cwd);
   const p = apmPaths(cwd);
-  const rels = walkKbMarkdownUnderKbRoot(p.kbRoot);
   const ms = new MiniSearch<KbIndexDoc>(kbMiniSearchOptions());
-  for (const rel of rels) {
-    const abs = join(p.kbRoot, rel);
+
+  for (const rel of walkMarkdown(p.docsDir)) {
+    const abs = join(p.docsDir, rel);
     const raw = readFileSync(abs, "utf8");
     const { title, body } = extractKbDoc(raw);
-    ms.add({ path: rel, title, body });
+    ms.add({ path: `docs/${rel}`, title, body });
   }
+  for (const rel of walkMarkdown(p.archiveDir)) {
+    const abs = join(p.archiveDir, rel);
+    const raw = readFileSync(abs, "utf8");
+    const { title, body } = extractKbDoc(raw);
+    ms.add({ path: `archive/${rel}`, title, body });
+  }
+
   const json = JSON.stringify(ms);
   const gz = gzipSync(Buffer.from(json, "utf8"));
   await withGlobalLock(p.lock, async () => {
-    await serialWrite(p.kbSearchIndexGz, async () => {
-      atomicWriteGzip(p.kbSearchIndexGz, gz);
+    await serialWrite(p.searchIndexGz, async () => {
+      atomicWriteGzip(p.searchIndexGz, gz);
     });
   });
-}
-
-export type KbSearchHit = { path: string; title: string; score: number };
-
-/** CLI `kb search`：索引文件缺失时抛错（T7）。 */
-export function searchKb(cwd: string, query: string, limit = 5): KbSearchHit[] {
-  ensureWorkspace(cwd);
-  const p = apmPaths(cwd);
-  if (!existsSync(p.kbSearchIndexGz)) {
-    throw new Error("Knowledge index missing. Run `apm kb index rebuild`.");
-  }
-  const ms = loadKbMiniSearch(cwd)!;
-  return searchKbIndex(ms, query, limit).map(({ path, title, score }) => ({ path, title, score }));
 }

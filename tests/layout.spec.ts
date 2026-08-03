@@ -19,33 +19,13 @@ describe("apm cli workspace layout", () => {
     expect(existsSync(join(dir, ".apm", "memory", "role.md"))).toBe(true);
     expect(existsSync(join(dir, ".apm", "memory", "persist.md"))).toBe(true);
     expect(existsSync(join(dir, ".apm", "memory", "dynamic.md"))).toBe(true);
-    expect(existsSync(join(dir, ".apm", "kb", "archive"))).toBe(true);
-    expect(existsSync(join(dir, ".apm", "kb", "docs"))).toBe(true);
-    expect(existsSync(join(dir, ".apm", "kb", "dynamic"))).toBe(false);
-    expect(existsSync(join(dir, ".apm", "kb", "index"))).toBe(true);
-    expect(existsSync(join(dir, ".apm", "kb", "index", "search.json.gz"))).toBe(false);
-    expect(existsSync(join(dir, ".apm", "status.json"))).toBe(false);
-    const cfg = JSON.parse(readFileSync(join(dir, ".apm", "config.json"), "utf8"));
+    expect(existsSync(join(dir, ".apm", "archive"))).toBe(true);
+    expect(existsSync(join(dir, ".apm", "config"))).toBe(true);
+    expect(existsSync(join(dir, ".apm", "config", "index.gz"))).toBe(false);
+    const cfg = JSON.parse(readFileSync(join(dir, ".apm", "config", "config.json"), "utf8"));
     expect(cfg.limits).toBeTruthy();
     expect(cfg.initializedAt).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
     expect(cfg.lastReadAt).toBeNull();
-  });
-
-  it("T2: legacy layout is rejected with guidance", async () => {
-    const dir = newTempDir();
-    mkdirSync(join(dir, ".apm", "persistence"), { recursive: true });
-    const message = await runCliFail(["role", "show"], dir);
-    expect(message).toMatch(/Old \.apm layout|old \.apm layout/i);
-    expect(message).toMatch(/apm init/i);
-  });
-
-  it("T2b: legacy .apm/dynamic tree is removed and commands succeed", async () => {
-    const dir = newTempDir();
-    await runCli(["init"], dir);
-    mkdirSync(join(dir, ".apm", "dynamic"), { recursive: true });
-    writeFileSync(join(dir, ".apm", "dynamic", "detail.md"), "---\n---\nold\n", "utf8");
-    await runCli(["role", "show"], dir);
-    expect(existsSync(join(dir, ".apm", "dynamic"))).toBe(false);
   });
 
   it("T2c: incomplete workspace is auto-repaired on first command", async () => {
@@ -84,11 +64,11 @@ describe("apm cli workspace layout", () => {
     const body2 = "n".repeat(12);
     await runCli(["dynamic", "write", "--text", body1], dir);
     await runCli(["dynamic", "write", "--text", body2], dir);
-    const kbRoot = join(dir, ".apm", "kb");
+    const archiveDir = join(dir, ".apm", "archive");
     const target = readMemorySectionFile(dir, "dynamic");
     expect(target).toContain(body2);
     expect(target).not.toContain(body1);
-    const latest = latestLayeredSnapshotAbs(kbRoot, "dynamic");
+    const latest = latestLayeredSnapshotAbs(archiveDir, "dynamic");
     expect(latest).toBeTruthy();
     const snapshot = readFileSync(latest!, "utf8");
     expect(snapshot).toBe(target);
@@ -101,14 +81,14 @@ describe("apm cli workspace layout", () => {
     await runCli(["init"], dir);
     await runCli(["config", "set", "--section", "dynamicDetail", "--max", "200"], dir);
     await runCli(["dynamic", "write", "--text", "z".repeat(12)], dir);
-    const kbRoot = join(dir, ".apm", "kb");
-    const n = countLayeredSnapshots(kbRoot, "dynamic");
+    const archiveDir = join(dir, ".apm", "archive");
+    const n = countLayeredSnapshots(archiveDir, "dynamic");
     await runCli(["dynamic", "write", "--text", ""], dir);
-    expect(countLayeredSnapshots(kbRoot, "dynamic")).toBe(n + 1);
+    expect(countLayeredSnapshots(archiveDir, "dynamic")).toBe(n + 1);
     const cleared = readMemorySectionFile(dir, "dynamic");
     expect(cleared.startsWith("---\n")).toBe(true);
     expect(cleared.split("\n---\n")[1]?.trim() ?? "").toBe("");
-    const latest = latestLayeredSnapshotAbs(kbRoot, "dynamic");
+    const latest = latestLayeredSnapshotAbs(archiveDir, "dynamic");
     expect(readFileSync(latest!, "utf8")).toBe(cleared);
   });
 
@@ -125,19 +105,19 @@ describe("apm cli workspace layout", () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     await runCli(["config", "set", "--section", "dynamicDetail", "--max", "200"], dir);
-    const kbRoot = join(dir, ".apm", "kb");
-    expect(countLayeredSnapshots(kbRoot, "dynamic")).toBe(0);
+    const archiveDir = join(dir, ".apm", "archive");
+    expect(countLayeredSnapshots(archiveDir, "dynamic")).toBe(0);
     await runCli(["dynamic", "write", "--text", "x".repeat(12)], dir);
-    expect(countLayeredSnapshots(kbRoot, "dynamic")).toBe(1);
+    expect(countLayeredSnapshots(archiveDir, "dynamic")).toBe(1);
   });
 
   it("T-DYN-ARCH-04: 空 dynamic 上 empty write 仍新增一条快照", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    const kbRoot = join(dir, ".apm", "kb");
-    const n = countLayeredSnapshots(kbRoot, "dynamic");
+    const archiveDir = join(dir, ".apm", "archive");
+    const n = countLayeredSnapshots(archiveDir, "dynamic");
     await runCli(["dynamic", "write", "--text", ""], dir);
-    expect(countLayeredSnapshots(kbRoot, "dynamic")).toBe(n + 1);
+    expect(countLayeredSnapshots(archiveDir, "dynamic")).toBe(n + 1);
   });
 
   it("T-DYN-ESC-01: dynamic write unescapes \\n in --text", async () => {
@@ -150,13 +130,13 @@ describe("apm cli workspace layout", () => {
     expect(shown.out).toContain("2|line2");
   });
 
-  it("T-IDX-01: role write updates search.json.gz mtime or hash", async () => {
+  it("T-IDX-01: role write updates index.gz mtime or hash", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     writeKbDoc(dir, "seed.md", "# Seed\nseed for index baseline\n");
-    await runCli(["kb", "index", "rebuild"], dir);
+    await runCli(["index", "build"], dir);
     await runCli(["config", "set", "--section", "role", "--max", "100"], dir);
-    const idx = join(dir, ".apm", "kb", "index", "search.json.gz");
+    const idx = join(dir, ".apm", "config", "index.gz");
     const beforeMtime = statSync(idx).mtimeMs;
     const beforeHash = createHash("sha256").update(readFileSync(idx)).digest("hex");
     await runCli(["role", "write", "--text", "role triggers rebuild"], dir);
@@ -167,7 +147,7 @@ describe("apm cli workspace layout", () => {
     expect(afterMtime > beforeMtime || afterHash !== beforeHash).toBe(true);
   });
 
-  it("T-IDX-02: dynamic write 分层 archive 快照可被 kb search 检索", async () => {
+  it("T-IDX-02: dynamic write 分层 archive 快照可被检索", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     await runCli(["config", "set", "--section", "dynamicDetail", "--max", "200"], dir);
@@ -175,37 +155,45 @@ describe("apm cli workspace layout", () => {
     const body1 = `${keyword} ${"a".repeat(4)}`;
     await runCli(["dynamic", "write", "--text", body1], dir);
     await runCli(["dynamic", "write", "--text", "b".repeat(12)], dir);
-    const out = await runCli(["kb", "search", "--q", keyword], dir);
+    await runCli(["role", "write", "--text", keyword], dir);
+    const out = await runCli(["read"], dir);
     expect(out.out).toMatch(/archive\/\d{4}\/\d{2}\/\d{2}\/dynamic\//);
-    const kbRoot = join(dir, ".apm", "kb");
-    const hit = listLayeredSnapshotRels(kbRoot)
+    const archiveDir = join(dir, ".apm", "archive");
+    const hit = listLayeredSnapshotRels(archiveDir)
       .filter((rel) => rel.includes("/dynamic/"))
-      .find((rel) => readFileSync(join(kbRoot, rel), "utf8").includes(keyword));
+      .find((rel) => readFileSync(join(archiveDir, rel), "utf8").includes(keyword));
     expect(hit).toBeTruthy();
   });
 
-  it("T6: kb docs + index rebuild, search finds expected doc in top results", async () => {
+  it("T6: docs + index build, read association finds expected doc in top results", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     writeKbDoc(dir, "alpha-topic.md", "# Alpha\n\nkwfixture_alpha_unique token for search.\n");
     writeKbDoc(dir, "nested/beta.md", "# Beta\n\nother content only.\n");
-    await runCli(["kb", "index", "rebuild"], dir);
-    const out = await runCli(["kb", "search", "--q", "kwfixture_alpha_unique"], dir);
+    await runCli(["index", "build"], dir);
+    await runCli(["role", "write", "--text", "kwfixture_alpha_unique"], dir);
+    const out = await runCli(["read"], dir);
     expect(out.out).toContain("docs/alpha-topic.md");
   });
 
-  it("T7: index file is gzip; missing index yields rebuild hint", async () => {
+  it("T7: index file is gzip; missing index yields build hint", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     writeKbDoc(dir, "x.md", "# T\nhello world\n");
-    await runCli(["kb", "index", "rebuild"], dir);
-    const idx = join(dir, ".apm", "kb", "index", "search.json.gz");
+    await runCli(["index", "build"], dir);
+    const idx = join(dir, ".apm", "config", "index.gz");
     const head = readFileSync(idx).subarray(0, 2);
     expect(head[0]).toBe(0x1f);
     expect(head[1]).toBe(0x8b);
     rmSync(idx, { force: true });
-    const err = await runCliFail(["kb", "search", "--q", "hello"], dir);
-    expect(err).toMatch(/rebuild/i);
+    const rolePath = join(dir, ".apm", "memory", "role.md");
+    writeFileSync(
+      rolePath,
+      ['---', 'createdAt: "2026-01-01 00:00:00"', 'updatedAt: "2026-01-01 00:00:00"', '---', 'hello world'].join("\n"),
+      "utf8"
+    );
+    const { out } = await runCli(["read"], dir);
+    expect(out).toMatch(/index build/i);
   });
 
   it("T8: role/persist/config/read on canonical paths", async () => {
@@ -275,23 +263,18 @@ describe("apm cli workspace layout", () => {
     expect(showErr).toContain("createdAt");
   });
 
-  it("registers init and kb; kb only search/index", () => {
+  it("registers init and index commands", () => {
     const program = buildProgram();
     const names = program.commands.map((c) => c.name());
     expect(names).toContain("init");
-    expect(names).toContain("kb");
+    expect(names).toContain("index");
     expect(names).toContain("dynamic");
+    expect(names).not.toContain("kb");
     expect(names).not.toContain("tmp");
     expect(names).not.toContain("chunks");
-    const kb = program.commands.find((c) => c.name() === "kb");
-    expect(kb).toBeDefined();
-    const kbNames = kb!.commands.map((c) => c.name()).sort();
-    expect(kbNames).toEqual(["index", "search"]);
-    expect(kbNames).not.toContain("write");
-    expect(kbNames).not.toContain("import");
   });
 
-  it("T-KB-NEG-01: kb write / import 退出码非 0", async () => {
+  it("T-KB-NEG-01: unknown kb subcommands exit non-zero", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     const writeRes = await runCliWithExit(["kb", "write", "--path", "x.md", "--text", "hi"], dir);
@@ -345,14 +328,15 @@ describe("apm cli workspace layout", () => {
     expect(shown.out).toContain(`1|${body}`);
   });
 
-  it("direct kb/docs files are searchable after index rebuild", async () => {
+  it("direct docs files are searchable after index build", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     writeKbDoc(dir, "a.md", "# Imp\nimport_kw_xyz\n");
     writeKbDoc(dir, "sub/b.md", "body\n");
-    await runCli(["kb", "index", "rebuild"], dir);
-    const out = await runCli(["kb", "search", "--q", "import_kw_xyz"], dir);
-    expect(out.out).toContain("a.md");
+    await runCli(["index", "build"], dir);
+    await runCli(["role", "write", "--text", "import_kw_xyz"], dir);
+    const out = await runCli(["read"], dir);
+    expect(out.out).toContain("docs/a.md");
   });
 
   it("rejects raw section files without mandatory front matter (memory role)", async () => {

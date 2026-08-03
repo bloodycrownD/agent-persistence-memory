@@ -26,12 +26,15 @@ export async function setupAssocWorkspace(dir: string): Promise<void> {
   await runCli(["config", "set", "--section", "dynamicDetail", "--max", "500"], dir);
 }
 
-export function removeKbDocsReadme(dir: string): void {
-  rmSync(join(dir, ".apm", "kb", "docs", "README.md"), { force: true });
+/**
+ * docs 目录由用户管理，init 不再写入 README 占位；保留该 helper 作为空操作以兼容旧调用。
+ */
+export function removeKbDocsReadme(_dir: string): void {
+  /* no-op: docs README 占位已随布局重构移除 */
 }
 
-export function trimKbIndexFixtures(dir: string): void {
-  removeKbDocsReadme(dir);
+export function trimKbIndexFixtures(_dir: string): void {
+  /* no-op: docs 不再有自动生成的 README */
 }
 
 /** 直接写入 memory 段正文（不经过 CLI write，不产生 archive 快照）。 */
@@ -45,7 +48,8 @@ export function seedMemorySection(
   writeFileSync(join(dir, ".apm", "memory", file), renderFrontMatter(meta, body), "utf8");
 }
 
+/** 直接写入 `.apm/archive/` 下的 Markdown。 */
 export function writeKbArchiveDoc(dir: string, filename: string, body: string): void {
-  mkdirSync(join(dir, ".apm", "kb", "archive"), { recursive: true });
-  writeFileSync(join(dir, ".apm", "kb", "archive", filename), body, "utf8");
+  mkdirSync(join(dir, ".apm", "archive"), { recursive: true });
+  writeFileSync(join(dir, ".apm", "archive", filename), body, "utf8");
 }

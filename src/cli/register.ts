@@ -4,7 +4,7 @@ import { registerInit } from "./commands/init";
 import { registerRole } from "./commands/role";
 import { registerPersist } from "./commands/persist";
 import { registerDynamic } from "./commands/dynamic";
-import { registerKb } from "./commands/kb";
+import { registerIndex } from "./commands/index";
 import { registerConfig } from "./commands/config";
 
 export function buildProgram(): Command {
@@ -16,7 +16,7 @@ export function buildProgram(): Command {
   registerRole(program);
   registerPersist(program);
   registerDynamic(program);
-  registerKb(program);
+  registerIndex(program);
   registerConfig(program);
 
   return program;

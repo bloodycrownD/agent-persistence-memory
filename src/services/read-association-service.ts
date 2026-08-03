@@ -1,12 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
-import { apmPaths, ensureWorkspace } from "../storage/paths";
+import { ensureWorkspace } from "../storage/paths";
 import { isKbNoiseToken } from "../core/kb-stopwords";
 import type { Section } from "../schemas/config";
 import { readSectionContentRelaxed } from "./sections-service";
 import {
   kbTokenize,
   loadKbMiniSearch,
-  resolveKbIndexedPath,
+  resolveIndexedPath,
   searchKbIndex,
   type KbSearchHitEx
 } from "./kb-index-service";
@@ -113,13 +113,13 @@ function lineContainsKeyword(line: string, keywords: string[]): boolean {
  * 使用原始文件内容，而非索引剥离后的正文。
  */
 export function collectHitLines(
-  kbRoot: string,
+  cwd: string,
   relPath: string,
   keywords: string[],
   maxLines: number
 ): ReadAssociationLine[] {
   if (keywords.length === 0) return [];
-  const abs = resolveKbIndexedPath(kbRoot, relPath);
+  const abs = resolveIndexedPath(cwd, relPath);
   if (!existsSync(abs)) return [];
   const fileLines = readFileSync(abs, "utf8").replace(/\r\n/g, "\n").split("\n");
   const out: ReadAssociationLine[] = [];
@@ -148,7 +148,6 @@ export function computeReadAssociation(cwd: string): ReadAssociationResult {
   if (raw.length === 0) return { status: "no_hits" };
 
   const maxScore = Math.max(...raw.map((r) => r.score));
-  const p = apmPaths(cwd);
   const seenPaths = new Set<string>();
   const unique: Array<{ hit: KbSearchHitEx; matchPercent: number; keywords: string[] }> = [];
 
@@ -163,7 +162,7 @@ export function computeReadAssociation(cwd: string): ReadAssociationResult {
     path: hit.path,
     matchPercent,
     keywords,
-    lines: collectHitLines(p.kbRoot, hit.path, keywords, 3)
+    lines: collectHitLines(cwd, hit.path, keywords, 3)
   }));
 
   const summary: ReadAssociationEntry[] = unique.slice(5, 15).map(({ hit, matchPercent, keywords }) => ({
@@ -205,7 +204,7 @@ function formatDetailedEntry(entry: ReadAssociationEntry): string {
  */
 export function formatAssociationSection(result: ReadAssociationResult): string | null {
   if (result.status === "missing_index") {
-    return "# 联想区\n\nKnowledge index missing. Run `apm kb index rebuild`.";
+    return "# 联想区\n\nKnowledge index missing. Run `apm index build`.";
   }
   if (result.status === "empty_query" || result.status === "no_hits") {
     return null;

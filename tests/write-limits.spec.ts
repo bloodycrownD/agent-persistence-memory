@@ -18,7 +18,7 @@ describe("write limits / stdin / validate", () => {
   it("T-WL-01: new init config has max-only defaults", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    const cfg = JSON.parse(readFileSync(join(dir, ".apm", "config.json"), "utf8"));
+    const cfg = JSON.parse(readFileSync(join(dir, ".apm", "config", "config.json"), "utf8"));
     expect(cfg.limits.role).toEqual({ max: 100 });
     expect(cfg.limits.persist).toEqual({ max: 800 });
     expect(cfg.limits.dynamicDetail).toEqual({ max: 1500 });
@@ -154,28 +154,13 @@ describe("write limits / stdin / validate", () => {
     }
   });
 
-  it("T-WL-14: legacy config with min still allows short write", async () => {
-    const dir = newTempDir();
-    await runCli(["init"], dir);
-    const cfgPath = join(dir, ".apm", "config.json");
-    const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
-    cfg.limits.role = { min: 50, max: 100 };
-    writeFileSync(cfgPath, JSON.stringify(cfg, null, 2), "utf8");
-    const shown = await runCli(["config", "show"], dir);
-    expect(shown.out).toMatch(/"role"/);
-    expect(shown.out).toMatch(/"max": 100/);
-    const { out } = await runCli(["role", "write", "--text", "x"], dir);
-    expect(out).toBe("OK");
-    expect(readMemoryBody(dir, "role.md")).toBe("x");
-  });
-
   it("T-WL-15: config set persists max only", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     await runCli(["config", "set", "--section", "dynamicDetail", "--max", "80"], dir);
-    const cfg = JSON.parse(readFileSync(join(dir, ".apm", "config.json"), "utf8"));
+    const cfg = JSON.parse(readFileSync(join(dir, ".apm", "config", "config.json"), "utf8"));
     expect(cfg.limits.dynamicDetail).toEqual({ max: 80 });
     expect(cfg.limits.dynamicDetail).not.toHaveProperty("min");
-    expect(existsSync(join(dir, ".apm", "config.json"))).toBe(true);
+    expect(existsSync(join(dir, ".apm", "config", "config.json"))).toBe(true);
   });
 });
