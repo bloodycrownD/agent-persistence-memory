@@ -3,11 +3,7 @@ import { resolveCliBodyText } from "../../core/cli-body-input";
 import { ensureWorkspace } from "../../storage/paths";
 import { toLineNumbered } from "../../formatters/line-number";
 import { rebuildKbIndex } from "../../services/kb-index-service";
-import {
-  readSectionContent,
-  validateSectionContent,
-  writeSection
-} from "../../services/sections-service";
+import { readSectionContent, writeSection } from "../../services/sections-service";
 import type { Section } from "../../schemas/config";
 
 const MEMORY_INDEX_SECTIONS: Section[] = ["role", "persist", "dynamicDetail"];
@@ -36,18 +32,5 @@ export function registerSectionCommands(cmd: Command, section: Section): void {
       await writeSection(cwd, section, text, { snapshot: true });
       await afterMemorySectionMutation(cwd, section);
       console.log("OK");
-    });
-
-  cmd
-    .command("validate")
-    .description("Validate section body length without writing to disk")
-    .option("--text <text>", "Section body text")
-    .option("--stdin", "Read body from stdin")
-    .action(async (opts: { text?: string; stdin?: boolean }) => {
-      const cwd = process.cwd();
-      ensureWorkspace(cwd);
-      const text = await resolveCliBodyText(opts);
-      const { len, max } = validateSectionContent(cwd, section, text);
-      console.log(`OK: ${len}/${max}`);
     });
 }

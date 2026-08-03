@@ -7,7 +7,6 @@ import {
 } from "../core/memory-snapshot-path";
 import { extractMarkdownBodyRelaxed } from "../core/markdown-body";
 import { nowLocal } from "../core/time";
-import { countChars } from "../core/validate";
 import { formatZodError } from "../core/schema-errors";
 import { renderFrontMatter, parseFrontMatter } from "../storage/markdown";
 import { apmPaths } from "../storage/paths";
@@ -15,52 +14,13 @@ import { withGlobalLock } from "../storage/fs-lock";
 import { serialWrite } from "../storage/serial";
 import { atomicWrite } from "../storage/fs-atomic";
 import { LOCAL_TIMESTAMP_MESSAGE, LOCAL_TIMESTAMP_RE } from "../schemas/local-timestamp";
-import { readConfig } from "./config-service";
-import type { Limits, Section } from "../schemas/config";
+import type { Section } from "../schemas/config";
 
 function sectionPath(cwd: string, section: Section): string {
   const p = apmPaths(cwd);
   if (section === "role") return p.memoryRole;
   if (section === "persist") return p.memoryPersist;
   return p.memoryDynamic;
-}
-
-function sectionLabel(section: Section): string {
-  if (section === "dynamicDetail") return "dynamic";
-  return section;
-}
-
-function getSectionLimits(cwd: string, section: Section): Limits {
-  const cfg = readConfig(cwd);
-  if (section === "role") return cfg.limits.role;
-  if (section === "persist") return cfg.limits.persist;
-  return cfg.limits.dynamicDetail;
-}
-
-/** 生成记忆段超长报错文案（英文，与 CLI 一致）。 */
-export function formatLengthError(section: Section, len: number, max: number): string {
-  return `${sectionLabel(section)} content length: got ${len}, max ${max}, need ${len - max} fewer chars.`;
-}
-
-function assertWithinMax(cwd: string, section: Section, text: string): void {
-  const limits = getSectionLimits(cwd, section);
-  const len = countChars(text);
-  if (len > limits.max) {
-    throw new Error(formatLengthError(section, len, limits.max));
-  }
-}
-
-/**
- * 校验记忆段正文长度（仅上限）；通过时返回长度与上限，超长则抛错。
- */
-export function validateSectionContent(
-  cwd: string,
-  section: Section,
-  text: string
-): { len: number; max: number } {
-  assertWithinMax(cwd, section, text);
-  const limits = getSectionLimits(cwd, section);
-  return { len: countChars(text), max: limits.max };
 }
 
 type SectionMeta = { createdAt: string; updatedAt: string };
@@ -131,15 +91,13 @@ export type WriteSectionOptions = {
   snapshot?: boolean;
 };
 
-/** 写入记忆段正文；超长时抛错，不落盘。损坏/缺失 front matter 时自愈写出合法 FM。 */
+/** 写入记忆段正文；损坏/缺失 front matter 时自愈写出合法 FM。 */
 export async function writeSection(
   cwd: string,
   section: Section,
   text: string,
   opts: WriteSectionOptions = {}
 ): Promise<void> {
-  assertWithinMax(cwd, section, text);
-
   const p = sectionPath(cwd, section);
   const paths = apmPaths(cwd);
   const createdAt = readSectionCreatedAtForWrite(p);

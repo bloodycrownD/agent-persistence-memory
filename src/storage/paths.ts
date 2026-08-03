@@ -58,7 +58,6 @@ export function createWorkspaceIdempotent(cwd: string): void {
   if (!existsSync(p.config)) {
     const cfg = ConfigSchema.parse(
       mergeConfigWithDefaults({
-        limits: DEFAULT_CONFIG.limits,
         initializedAt: now,
         updatedAt: now,
         lastReadAt: null

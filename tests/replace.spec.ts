@@ -3,15 +3,16 @@ import { buildProgram } from "../src/index";
 import { newTempDir, resolveCommand, runCli, runCliWithExit } from "./helpers/cli-harness";
 
 describe("apm section replace removed", () => {
-  it("T-REP-NEG-01: section help lists show/write/validate without replace", () => {
+  it("T-REP-NEG-01: section help lists show/write without replace", () => {
     const program = buildProgram();
     for (const path of [["role"], ["persist"], ["dynamic"]] as const) {
       const cmd = resolveCommand(program, ...path);
       expect(cmd).toBeDefined();
       const names = cmd!.commands.map((c) => c.name());
-      expect(names).toEqual(expect.arrayContaining(["show", "write", "validate"]));
+      expect(names).toEqual(expect.arrayContaining(["show", "write"]));
       expect(names).not.toContain("replace");
       expect(names).not.toContain("edit");
+      expect(names).not.toContain("validate");
       const help = cmd!.helpInformation();
       expect(help).toMatch(/show/);
       expect(help).toMatch(/write/);
@@ -34,7 +35,6 @@ describe("apm section replace removed", () => {
   it("T-REP-NEG-03: edit subcommand remains unavailable", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "role", "--max", "100"], dir);
     await runCli(["role", "write", "--text", "unchanged"], dir);
     const { code, stderr } = await runCliWithExit(
       ["role", "edit", "--start", "1", "--end", "1", "--text", "x"],

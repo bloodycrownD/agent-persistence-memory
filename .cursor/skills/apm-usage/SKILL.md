@@ -1,6 +1,6 @@
 ---
 name: apm-usage
-description: 指导 Agent 与开发者使用本仓库 APM CLI（init、read、role/persist/dynamic、kb 检索/索引、联想区、validate 干跑、stdin 管道写入）。在用户提到 apm、外置记忆、.apm、apm read、知识库、会话恢复或 Agent 初始化上下文时使用。
+description: 指导 Agent 与开发者使用本仓库 APM CLI（init、read、role/persist/dynamic、kb 检索/索引、联想区、stdin 管道写入）。在用户提到 apm、外置记忆、.apm、apm read、知识库、会话恢复或 Agent 初始化上下文时使用。
 disable-model-invocation: true
 ---
 
@@ -24,7 +24,7 @@ apm persist write --text "…"  # 可选：长期结论
 
 ```
 .apm/                   # 运行态目录（整体 .gitignore）
-  config/config.json   # 各段 max 上限；initializedAt / updatedAt / lastReadAt
+  config/config.json   # initializedAt / updatedAt / lastReadAt
   config/index.gz        # 搜索索引（apm index build 产物）
   memory/role.md       # 角色
   memory/persist.md    # 持久记忆
@@ -34,18 +34,6 @@ docs/                   # 项目根，知识库 .md（可嵌套，入版本控�
 ```
 
 知识库文档请直接写入项目根 `docs/`（如 `Iterations/foo/prd.md`），再执行 `apm index build`。检索与联想中的路径带来源前缀（如 `docs/foo.md`、`archive/2026/06/18/dynamic/143052127.md`；旧版扁平 `archive/dynamic-....md` 仍可被索引）。
-
-## 默认长度上限（仅 max，无下限）
-
-| 段 | config section | 默认 max |
-|----|----------------|----------|
-| 角色 | `role` | 100 |
-| 持久记忆 | `persist` | 800 |
-| 动态记忆 | `dynamicDetail` | 1500 |
-
-- **无下限**：任意短文本（含 1 字、空串）均可写入。
-- **仅上限**：超过 `max` 时拒绝写入，报错含 `got n, max m, need k fewer chars`。
-- `docs/` 下的知识库文件**不受**上述 max 限制（直接写文件，不经 CLI write）。
 
 ## `apm read` 输出
 
@@ -65,12 +53,11 @@ docs/                   # 项目根，知识库 .md（可嵌套，入版本控�
 
 ### 记忆：`role` | `persist` | `dynamic`
 
-`show` · `write` · `validate`
+`show` · `write`
 
 ```bash
 apm role show
 apm role write --text "…"
-apm role validate --text "…"
 apm persist write --text "…"
 apm dynamic write --text "…"
 ```
@@ -90,16 +77,6 @@ echo -e "任务：…\n下一步：…" | apm dynamic write
 ```
 
 **无 `--file` 参数**：长知识库文档请直接写入项目根 `docs/`，再执行 `apm index build`。
-
-#### `validate`（干跑，不落盘）
-
-```bash
-apm dynamic validate --text "草稿正文"
-echo "草稿" | apm persist validate
-```
-
-- 规则与 `write` 相同（仅检查 max）；成功输出 `OK: <当前长度>/<max>`。
-- 不写盘、不归档、不触发索引重建。
 
 #### 写入说明
 
@@ -121,7 +98,6 @@ echo "草稿" | apm persist validate
 |------|--------------|
 | `role` / `persist` / `dynamic` **`write`** | 每次 +1 条分层快照 |
 | `dynamic write --text ""` | 目标变为空模板，仍 +1 条空模板快照 |
-| `validate` | **不**写盘、不归档 |
 
 旧版扁平 `archive/dynamic-<时间戳>.md` 若已存在（位于 `.apm/archive/`），索引 rebuild 后仍可检索，与新分层路径共存。
 
@@ -137,7 +113,6 @@ apm index build       # 扫描项目根 docs/ 与 .apm/archive/，重建 .apm/co
 |------|--------------------|
 | `role` / `persist` / `dynamic` 的 write | 是 |
 | 直接写入/移动 `docs/` | 否（需手动 `index build`） |
-| `validate`（各段） | 否 |
 
 > `apm read` 的联想区会消费索引；没有独立的 search 命令，检索结果通过 `apm read` 输出。
 
@@ -145,11 +120,9 @@ apm index build       # 扫描项目根 docs/ 与 .apm/archive/，重建 .apm/co
 
 ```bash
 apm config show
-apm config set --section role|persist|dynamicDetail --max <n>
 ```
 
-- 各段 limits **仅含 `max`**；旧 config 中的 `min` 读取时忽略。
-- `config set` 写回时只持久化 `{ "max": n }`。
+- 输出 `initializedAt` / `updatedAt` / `lastReadAt` 三个时间戳字段。
 
 ## 典型场景
 
@@ -170,14 +143,6 @@ apm index build
 apm read
 ```
 
-**写入前干跑校验：**
-
-```bash
-apm dynamic validate --text "草稿"
-# 通过后再 write
-apm dynamic write --text "草稿"
-```
-
 ## 勿混淆的路径
 
 | 路径 | 用途 |
@@ -194,6 +159,5 @@ apm dynamic write --text "草稿"
 | `Knowledge index missing` | `apm index build` |
 | 联想区无结果 | 记忆与 docs/archive 有共同词；`index build` |
 | 知识库改完搜不到 | `apm index build` |
-| 长度报错 `got … max … need … fewer` | 缩短正文，或 `config set --max` 调大；可先 `validate` 干跑 |
 | `\n` 未换行 | 使用 `\n` 转义序列、管道真实换行，或 `--stdin` |
 | `Cannot use both --text and --stdin` | 只选其一 |

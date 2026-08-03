@@ -23,7 +23,6 @@ describe("apm cli workspace layout", () => {
     expect(existsSync(join(dir, ".apm", "config"))).toBe(true);
     expect(existsSync(join(dir, ".apm", "config", "index.gz"))).toBe(false);
     const cfg = JSON.parse(readFileSync(join(dir, ".apm", "config", "config.json"), "utf8"));
-    expect(cfg.limits).toBeTruthy();
     expect(cfg.initializedAt).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
     expect(cfg.lastReadAt).toBeNull();
   });
@@ -36,10 +35,9 @@ describe("apm cli workspace layout", () => {
     expect(existsSync(join(dir, ".apm", "memory", "persist.md"))).toBe(true);
   });
 
-  it("T3: dynamic uses flat show/write/validate (no detail subcommand)", async () => {
+  it("T3: dynamic uses flat show/write (no detail subcommand)", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "dynamicDetail", "--max", "80"], dir);
     const body = "x".repeat(10);
     await runCli(["dynamic", "write", "--text", body], dir);
     const shown = await runCli(["dynamic", "show"], dir);
@@ -51,7 +49,7 @@ describe("apm cli workspace layout", () => {
     const dyn = program.commands.find((c) => c.name() === "dynamic");
     expect(dyn?.commands.find((c) => c.name() === "detail")).toBeUndefined();
     expect(dyn?.commands.map((c) => c.name())).toEqual(
-      expect.arrayContaining(["show", "write", "validate"])
+      expect.arrayContaining(["show", "write"])
     );
     expect(dyn?.commands.find((c) => c.name() === "replace")).toBeUndefined();
   });
@@ -59,7 +57,6 @@ describe("apm cli workspace layout", () => {
   it("T4: dynamic write 每次写入新版分层 archive 快照", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "dynamicDetail", "--max", "200"], dir);
     const body1 = "y".repeat(12);
     const body2 = "n".repeat(12);
     await runCli(["dynamic", "write", "--text", body1], dir);
@@ -79,7 +76,6 @@ describe("apm cli workspace layout", () => {
   it("T5: dynamic write --text empty 清空正文并新增空模板快照", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "dynamicDetail", "--max", "200"], dir);
     await runCli(["dynamic", "write", "--text", "z".repeat(12)], dir);
     const archiveDir = join(dir, ".apm", "archive");
     const n = countLayeredSnapshots(archiveDir, "dynamic");
@@ -104,7 +100,6 @@ describe("apm cli workspace layout", () => {
   it("T-DYN-ARCH-02: 首次 dynamic write 也产生分层 archive 快照", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "dynamicDetail", "--max", "200"], dir);
     const archiveDir = join(dir, ".apm", "archive");
     expect(countLayeredSnapshots(archiveDir, "dynamic")).toBe(0);
     await runCli(["dynamic", "write", "--text", "x".repeat(12)], dir);
@@ -123,7 +118,6 @@ describe("apm cli workspace layout", () => {
   it("T-DYN-ESC-01: dynamic write unescapes \\n in --text", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "dynamicDetail", "--max", "200"], dir);
     await runCli(["dynamic", "write", "--text", "line1\\nline2"], dir);
     const shown = await runCli(["dynamic", "show"], dir);
     expect(shown.out).toContain("1|line1");
@@ -135,7 +129,6 @@ describe("apm cli workspace layout", () => {
     await runCli(["init"], dir);
     writeKbDoc(dir, "seed.md", "# Seed\nseed for index baseline\n");
     await runCli(["index", "build"], dir);
-    await runCli(["config", "set", "--section", "role", "--max", "100"], dir);
     const idx = join(dir, ".apm", "config", "index.gz");
     const beforeMtime = statSync(idx).mtimeMs;
     const beforeHash = createHash("sha256").update(readFileSync(idx)).digest("hex");
@@ -150,7 +143,6 @@ describe("apm cli workspace layout", () => {
   it("T-IDX-02: dynamic write 分层 archive 快照可被检索", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "dynamicDetail", "--max", "200"], dir);
     const keyword = "kwarchive_idx_fixture_xyz";
     const body1 = `${keyword} ${"a".repeat(4)}`;
     await runCli(["dynamic", "write", "--text", body1], dir);
@@ -202,7 +194,6 @@ describe("apm cli workspace layout", () => {
     expect(existsSync(join(dir, ".apm", "memory", "dynamic.md"))).toBe(true);
     expect(existsSync(join(dir, ".apm", "tmp"))).toBe(false);
     expect(existsSync(join(dir, ".apm", "chunks"))).toBe(false);
-    await runCli(["config", "set", "--section", "role", "--max", "10"], dir);
     await runCli(["role", "write", "--text", "abcdef"], dir);
     const shown = await runCli(["role", "show"], dir);
     expect(shown.out).toContain("1|abcdef");
@@ -217,7 +208,6 @@ describe("apm cli workspace layout", () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
     writeFileSync(join(dir, ".apm", "memory", "role.md"), "corrupted content", "utf8");
-    await runCli(["config", "set", "--section", "persist", "--max", "100"], dir);
     await runCli(["persist", "write", "--text", "good-persist"], dir);
 
     const res = await runCli(["read"], dir);
@@ -286,7 +276,6 @@ describe("apm cli workspace layout", () => {
   it("T-WRITE-HEAL-01: 无 FM 的 role write 自愈后 show 成功", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "role", "--max", "100"], dir);
     const rolePath = join(dir, ".apm", "memory", "role.md");
     writeFileSync(rolePath, "plain body without front matter", "utf8");
     const showBefore = await runCliFail(["role", "show"], dir);
@@ -303,7 +292,6 @@ describe("apm cli workspace layout", () => {
   it("T-WRITE-HEAL-02: 坏 meta 的 role write 自愈后 show 成功", async () => {
     const dir = newTempDir();
     await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "role", "--max", "100"], dir);
     const rolePath = join(dir, ".apm", "memory", "role.md");
     writeFileSync(
       rolePath,
@@ -316,16 +304,6 @@ describe("apm cli workspace layout", () => {
     const raw = readFileSync(rolePath, "utf8");
     expect(raw).toMatch(/createdAt: ['"]\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}['"]/);
     expect(raw).not.toContain("bad-time");
-  });
-
-  it("enforces dynamicDetail limits after flat write", async () => {
-    const dir = newTempDir();
-    await runCli(["init"], dir);
-    await runCli(["config", "set", "--section", "dynamicDetail", "--max", "80"], dir);
-    const body = "x".repeat(10);
-    await runCli(["dynamic", "write", "--text", body], dir);
-    const shown = await runCli(["dynamic", "show"], dir);
-    expect(shown.out).toContain(`1|${body}`);
   });
 
   it("direct docs files are searchable after index build", async () => {
